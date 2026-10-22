@@ -162,7 +162,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 
     static func sha256Fingerprint(of data: Data) -> String {
         let digest = SHA256.hash(data: data)
-        let base64 = Data(digest).base64EncodedString()
+        let base64 = Data(digest).base64EncodedString().replacingOccurrences(of: "=", with: "")
         return "SHA256:\(base64)"
     }
 
@@ -181,9 +181,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 // MARK: - SSHHostKeyValidator convenience
 
 extension SSHHostKeyValidator {
-    /// Creates a TOFU (Trust On First Use) host key validator that stores known
-    /// host keys in SwiftData / Keychain and prompts the user when a key is new
-    /// or has changed.
+    /// Checks known keys; new or changed keys fail with HostKeyApprovalRequired.
     static func tofu(
         host: String,
         port: Int,

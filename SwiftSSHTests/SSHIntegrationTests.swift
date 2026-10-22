@@ -49,6 +49,8 @@ final class SSHIntegrationTests: XCTestCase {
             try await sftp.deleteFile(path: remote)
             try await sftp.deleteDirectory(path: directory)
             XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<KnownHost>()), 1)
+            XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<KnownHost>()).first?.fingerprintSHA256,
+                           fixture.hostFingerprint, "Fingerprint must match OpenSSH's independent calculation")
             await service.disconnect()
         } catch {
             try? await sftp.deleteFile(path: remote)
@@ -220,11 +222,54 @@ final class SSHIntegrationTests: XCTestCase {
         }
     }
 
+    func testChangedHostKeyRequiresApprovalAndRejectionPreservesTrust() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let oldKey = Data("previous-host-key".utf8)
+        let context = ModelContext(container)
+        context.insert(KnownHost(host: "127.0.0.1", port: fixture.port, keyTypeDescription: "ssh-ed25519",
+            fingerprintSHA256: "SHA256:previous", publicKeyData: oldKey))
+        try context.save()
+        let service = SSHService()
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        for decision in [HostKeyPromptResult.reject, .accept] {
+            do {
+                _ = try await service.connect(host: "127.0.0.1", port: fixture.port,
+                    username: fixture.username, authMethod: .privateKey(Data(fixture.privateKey.utf8)),
+                    modelContainer: container, hostKeyPrompt: { prompt in
+                        guard case .changedKey(let old, let new, _) = prompt else {
+                            XCTFail("A changed key must never appear as a first connection")
+                            return .reject
+                        }
+                        XCTAssertEqual(old, "SHA256:previous")
+                        XCTAssertEqual(new, fixture.hostFingerprint)
+                        return decision
+                    })
+                XCTAssertEqual(decision, .accept)
+            } catch {
+                guard decision == .reject else { await service.disconnect(); throw error }
+            }
+            let freshContext = ModelContext(container)
+            let stored = try XCTUnwrap(freshContext.fetch(FetchDescriptor<KnownHost>()).first)
+            if decision == .reject {
+                XCTAssertEqual(stored.publicKeyData, oldKey)
+                XCTAssertEqual(stored.fingerprintSHA256, "SHA256:previous")
+                XCTAssertFalse(service.isConnected)
+            } else {
+                XCTAssertNotEqual(stored.publicKeyData, oldKey)
+                XCTAssertEqual(stored.fingerprintSHA256, fixture.hostFingerprint)
+                XCTAssertTrue(service.isConnected)
+            }
+            await service.disconnect()
+        }
+    }
+
     private struct Fixture: Decodable {
         let username: String
         let port: Int
         let directory: String
         let privateKey: String
+        let hostFingerprint: String
     }
 
     private func loadFixture() throws -> Fixture {

@@ -58,7 +58,7 @@ jobs:
           sudo -n /usr/sbin/sshd -t -f "$fixture_root/sshd_config"
           sudo -n /usr/sbin/sshd -D -e -f "$fixture_root/sshd_config" > build/ssh-fixture.log 2>&1 &
           python3 - "$fixture_root" "$fixture_user" "$fixture_port" <<'PY'
-          import json, socket, sys, time
+          import json, socket, subprocess, sys, time
           from pathlib import Path
           root, user, port = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
           for attempt in range(30):
@@ -70,7 +70,9 @@ jobs:
                       raise
                   time.sleep(0.2)
           fixture = dict(username=user, port=port, directory=str(root / 'files'),
-                         privateKey=(root / 'client_key').read_text())
+                         privateKey=(root / 'client_key').read_text(),
+                         hostFingerprint=subprocess.check_output(
+                             ['ssh-keygen', '-lf', str(root / 'host_key.pub'), '-E', 'sha256'], text=True).split()[1])
           Path('SwiftSSHTests/Fixtures/ssh-integration.json').write_text(json.dumps(fixture))
           PY
           ssh -F /dev/null -i "$fixture_root/client_key" -p "$fixture_port" \
@@ -111,7 +113,8 @@ jobs:
                        'testDisconnectDuringHostKeyDecisionCannotCreateALateConnectionOrTrustEntry',
                        'testClosingSessionAfterTrustKeepsItDisconnectedAndPreservesTheAttemptAddress',
                        'testPTYReconnectStillDeliversInputAfterPreviousSessionCleanup',
-                       'testHostKeyDecisionCanOutlastNetworkTimeout'):
+                       'testHostKeyDecisionCanOutlastNetworkTimeout',
+                       'testChangedHostKeyRequiresApprovalAndRejectionPreservesTrust'):
               assert re.search(r'Test Case .*SSHIntegrationTests ' + name + r'.* passed', log), name + ' did not pass'
           assert re.search(r'Test Case .*SSHFlowTests testLiveSSHAndFilesFlow.* passed', log), 'Live SSH UI flow did not pass'
           PY

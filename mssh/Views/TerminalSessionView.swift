@@ -86,6 +86,7 @@ struct TerminalSessionView: View {
                             .disabled(isLoading)
                     }
                     Button("Snippets", systemImage: "text.badge.plus") { showSnippetPicker = true }
+                        .accessibilityIdentifier("session-snippets")
                         .disabled(!session.isConnected)
                     Button("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
                         .disabled(!session.isConnected)

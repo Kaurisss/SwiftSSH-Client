@@ -266,6 +266,7 @@ struct SplitSessionTabView: View {
                             .disabled(SessionBannerInfo.isLoading(for: session))
                     }
                     Button("Snippets", systemImage: "text.badge.plus") { snippetSession = focusedSession }
+                        .accessibilityIdentifier("session-snippets")
                         .disabled(focusedSession?.isConnected != true)
                     Button("Paste", systemImage: "doc.on.clipboard") {
                         if let text = AppClipboard.paste(), let session = focusedSession {

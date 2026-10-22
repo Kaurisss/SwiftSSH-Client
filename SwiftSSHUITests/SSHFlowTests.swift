@@ -71,7 +71,7 @@ final class SSHFlowTests: XCTestCase {
         app.buttons["Done"].tap()
 
         app.buttons["terminal-actions"].tap()
-        app.buttons["Snippets"].tap()
+        app.buttons["session-snippets"].tap()
         app.buttons["Add Snippet"].firstMatch.tap()
         let snippetName = "CI-Exit-\(UUID().uuidString.prefix(6))"
         app.textFields["snippet-label"].tap()

@@ -59,6 +59,8 @@ targets:
       path: mssh/Info.plist
       properties:
         CFBundleDisplayName: SwiftSSH
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleLocalizations:
           - en
           - zh-Hans

@@ -45,6 +45,11 @@ class InterfaceTests(unittest.TestCase):
             code = (ROOT / 'mssh/Views' / file).read_text(encoding='utf-8')
             self.assertIn('.frame(maxWidth: .infinity, maxHeight: .infinity)', code)
 
+    def test_generated_version_uses_project_build_settings(self):
+        spec = (ROOT / 'project.yml').read_text(encoding='utf-8')
+        self.assertIn('CFBundleShortVersionString: "$(MARKETING_VERSION)"', spec)
+        self.assertIn('CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"', spec)
+
     def test_keychain_entitlements_are_simulator_only(self):
         entitlements = plistlib.loads((ROOT / 'mssh/Simulator.entitlements').read_bytes())
         self.assertEqual(entitlements['application-identifier'], 'local.com.example.swiftssh')

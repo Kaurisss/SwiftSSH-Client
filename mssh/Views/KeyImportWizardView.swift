@@ -5,7 +5,6 @@ import UniformTypeIdentifiers
 // MARK: - Import Source
 
 enum KeyImportSource: String, CaseIterable, Identifiable {
-    case iCloudDrive = "iCloud Drive"
     case files = "Files"
     case clipboard = "Clipboard"
 
@@ -13,7 +12,6 @@ enum KeyImportSource: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .iCloudDrive: return "icloud"
         case .files: return "folder"
         case .clipboard: return "doc.on.clipboard"
         }
@@ -21,7 +19,6 @@ enum KeyImportSource: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .iCloudDrive: return "Browse iCloud Drive for SSH keys shared from your Mac"
         case .files: return "Pick key files from any accessible location"
         case .clipboard: return "Paste a private key copied to the clipboard"
         }
@@ -219,7 +216,7 @@ struct KeyImportWizardView: View {
             } header: {
                 Text("Where are your SSH keys?")
             } footer: {
-                Text("Select a source to browse for private key files. Keys shared from your Mac via iCloud Drive are the easiest option.")
+                Text("Choose a private key file or paste its contents. Imported keys are stored in this device's Keychain.")
             }
         }
     }
@@ -384,7 +381,7 @@ struct KeyImportWizardView: View {
 
     private func handleSourceSelection(_ source: KeyImportSource) {
         switch source {
-        case .iCloudDrive, .files:
+        case .files:
             showFilePicker = true
         case .clipboard:
             handleClipboard()

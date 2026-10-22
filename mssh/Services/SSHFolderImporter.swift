@@ -164,8 +164,7 @@ enum SSHFolderImporter {
                 _ = try KeyManagementService.importKey(
                     label: label,
                     pemText: text,
-                    modelContext: modelContext,
-                    syncAcrossDevices: true
+                    modelContext: modelContext
                 )
                 result.keysImported += 1
             } catch {

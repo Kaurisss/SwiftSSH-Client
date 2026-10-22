@@ -46,7 +46,7 @@ struct LockScreenView: View {
                             .foregroundStyle(AppColors.accent)
                     }
 
-                    Text("mSSH")
+                    Text("SwiftSSH")
                         .font(.system(size: 28, weight: .bold, design: .monospaced))
                         .foregroundStyle(AppColors.textPrimary)
 

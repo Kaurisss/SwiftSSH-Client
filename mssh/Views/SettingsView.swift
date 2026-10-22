@@ -4,11 +4,7 @@ import SwiftData
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(iCloudSyncService.self) private var syncService
     @State private var showClearDataAlert = false
-    @State private var showRestartAlert = false
-    @State private var importSummary: String?
-    @State private var showImportResult = false
 
     @AppStorage(AppPreferences.Key.terminalThemeName)
     private var themeName = AppPreferences.Default.terminalThemeName
@@ -23,7 +19,6 @@ struct SettingsView: View {
 
     @AppStorage("biometricEnabled") private var biometricEnabled = false
     @AppStorage("lockOnBackground") private var lockOnBackground = true
-    @AppStorage("cloudSyncEnabled") private var cloudSyncEnabled = true
 
     private var biometricsAvailable: Bool {
         BiometricService.canUseBiometrics()
@@ -51,16 +46,6 @@ struct SettingsView: View {
 
     private var appBuild: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
-    }
-
-    private var syncStatusColor: Color {
-        switch syncService.status {
-        case .synced:       return AppColors.connected
-        case .syncing:      return AppColors.accent
-        case .notStarted:   return AppColors.textSecondary
-        case .notAvailable: return AppColors.warning
-        case .error:        return AppColors.error
-        }
     }
 
     var body: some View {
@@ -176,103 +161,12 @@ struct SettingsView: View {
                     }
                 }
 
-                // Sync — live status from iCloudSyncService
                 Section {
-                    Toggle(isOn: $cloudSyncEnabled) {
-                        Label("iCloud Sync", systemImage: "icloud")
-                    }
-                    .onChange(of: cloudSyncEnabled) {
-                        showRestartAlert = true
-                    }
-
-                    if cloudSyncEnabled {
-                        HStack {
-                            Label("Status", systemImage: syncService.status.systemImage)
-                            Spacer()
-                            Text(syncService.status.label)
-                                .font(.caption)
-                                .foregroundStyle(syncStatusColor)
-                        }
-                        if let date = syncService.lastSyncDate {
-                            HStack {
-                                Label("Last Sync", systemImage: "clock.arrow.circlepath")
-                                Spacer()
-                                Text(date, style: .relative)
-                                    .font(.caption)
-                                    .foregroundStyle(AppColors.textSecondary)
-                            }
-                        }
-                        HStack {
-                            Label("iCloud Account", systemImage: "person.icloud")
-                            Spacer()
-                            if FileManager.default.ubiquityIdentityToken != nil {
-                                Text("Signed in")
-                                    .font(.caption)
-                                    .foregroundStyle(AppColors.connected)
-                            } else {
-                                Text("Not signed in")
-                                    .font(.caption)
-                                    .foregroundStyle(AppColors.warning)
-                            }
-                        }
-                        HStack {
-                            Label("Keychain Sync", systemImage: "key.icloud")
-                            Spacer()
-                            Text("Passwords · opt-in keys")
-                                .font(.caption)
-                                .foregroundStyle(AppColors.textSecondary)
-                        }
-                    }
+                    Label("Stored on this device", systemImage: "internaldrive")
                 } header: {
-                    Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+                    Label("Storage", systemImage: "externaldrive")
                 } footer: {
-                    if cloudSyncEnabled {
-                        Text("Connections, SSH key metadata, known hosts, snippets, and port forwards sync via iCloud. Passwords sync via iCloud Keychain. Private SSH key material is device-only unless you flip \"Sync across devices\" on a specific key in the Keys tab.")
-                    } else {
-                        Text("All data is stored locally on this device only. Turn on to sync across iPhone, iPad, and Mac.")
-                    }
-                }
-                .alert("Restart Required", isPresented: $showRestartAlert) {
-                    Button("OK") {}
-                } message: {
-                    Text("Please quit and reopen mSSH for the sync change to take effect.")
-                }
-
-                // Cross-device sync (always visible, uses KVS not CloudKit)
-                Section {
-                    Button {
-                        let result = ConnectionSyncBridge.push(modelContext: modelContext)
-                        importSummary = "Pushed \(result.connections) connection\(result.connections == 1 ? "" : "s"), \(result.snippets) snippet\(result.snippets == 1 ? "" : "s"), \(result.keys) key\(result.keys == 1 ? "" : "s") to iCloud."
-                        showImportResult = true
-                    } label: {
-                        Label("Push to iCloud", systemImage: "icloud.and.arrow.up")
-                            .foregroundStyle(AppColors.accent)
-                    }
-
-                    Button {
-                        let result = ConnectionSyncBridge.pull(modelContext: modelContext)
-                        importSummary = "Pulled \(result.connections) new connection\(result.connections == 1 ? "" : "s"), \(result.snippets) new snippet\(result.snippets == 1 ? "" : "s"), \(result.keys) new key\(result.keys == 1 ? "" : "s") from iCloud."
-                        showImportResult = true
-                    } label: {
-                        Label("Pull from iCloud", systemImage: "icloud.and.arrow.down")
-                            .foregroundStyle(AppColors.accent)
-                    }
-
-                    #if os(macOS)
-                    Button {
-                        let result = SSHFolderImporter.promptAndImport(modelContext: modelContext)
-                        importSummary = result.humanSummary +
-                            (result.errors.isEmpty ? "" : "\n\n" + result.errors.joined(separator: "\n"))
-                        showImportResult = true
-                    } label: {
-                        Label("Import from ~/.ssh Folder", systemImage: "square.and.arrow.down.on.square")
-                            .foregroundStyle(AppColors.accent)
-                    }
-                    #endif
-                } header: {
-                    Label("Sync Actions", systemImage: "arrow.triangle.2.circlepath.icloud")
-                } footer: {
-                    Text("Push sends your connections and snippets to iCloud. Pull downloads connections from other devices. Works across iPhone, iPad, and Mac.")
+                    Text("App-managed cloud sync is disabled. Passwords and private keys stay in this device's Keychain.")
                 }
 
                 // SSH (Known Hosts, Snippets)
@@ -313,15 +207,6 @@ struct SettingsView: View {
                     Text("This will delete all connections, SSH keys, snippets, port forwards, and known hosts. This cannot be undone.")
                 }
 
-                // Support / Tip Jar
-                Section {
-                    TipJarView()
-                } header: {
-                    Label("Support mSSH", systemImage: "heart.fill")
-                } footer: {
-                    Text("mSSH is free and open source. Tips help keep development going. Thank you!")
-                }
-
                 // About
                 Section {
                     HStack {
@@ -353,9 +238,9 @@ struct SettingsView: View {
                             .foregroundStyle(AppColors.textSecondary)
                     }
                     HStack {
-                        Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
+                        Label("Based on", systemImage: "chevron.left.forwardslash.chevron.right")
                         Spacer()
-                        Text("github.com/m4ck/mssh")
+                        Link("nirasnet/mssh", destination: URL(string: "https://github.com/nirasnet/mssh")!)
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(AppColors.textSecondary)
                     }
@@ -374,11 +259,6 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                         .fontWeight(.semibold)
                 }
-            }
-            .alert("Import Complete", isPresented: $showImportResult) {
-                Button("OK") {}
-            } message: {
-                Text(importSummary ?? "")
             }
         }
         .appTheme()

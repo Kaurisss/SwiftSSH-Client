@@ -1,0 +1,80 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare tools
+        run: |
+          xcodebuild -version
+          swift --version
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+
+      - name: Check configuration and generate project
+        run: |
+          python3 scripts/check_baseline.py
+          xcodegen generate
+
+      - name: Archive without signing
+        run: |
+          mkdir -p build
+          xcodebuild archive \
+            -project SwiftSSH.xcodeproj \
+            -scheme SwiftSSH \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/SwiftSSH.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            2>&1 | tee build/archive.log
+
+      - name: Package unsigned IPA
+        run: |
+          app="build/SwiftSSH.xcarchive/Products/Applications/SwiftSSH.app"
+          test -f "$app/Info.plist"
+          test -f "$app/SwiftSSH"
+          test ! -f "$app/embedded.mobileprovision"
+          mkdir -p build/ipa/Payload
+          ditto "$app" build/ipa/Payload/SwiftSSH.app
+          (cd build/ipa && zip -qry ../SwiftSSH-unsigned.ipa Payload)
+          unzip -t build/SwiftSSH-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SwiftSSH-unsigned
+          path: build/SwiftSSH-unsigned.ipa
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload archive log on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: archive-log
+          path: build/archive.log
+          if-no-files-found: ignore
+          retention-days: 7

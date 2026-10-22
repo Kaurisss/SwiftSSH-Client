@@ -1,63 +1,67 @@
-name: mssh
+name: SwiftSSH
 options:
-  bundleIdPrefix: com.m4ck
+  bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "18.0"
-    macOS: "15.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
 settings:
   base:
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
     SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
 
 packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
-    from: "1.13.0"
+    exactVersion: "1.13.0"
   Citadel:
     url: https://github.com/orlandos-nl/Citadel
-    from: "0.9.0"
+    exactVersion: "0.12.1"
 
 targets:
-  mssh:
+  SwiftSSH:
     type: application
     platform: iOS
     sources:
       - path: mssh
         excludes:
-          - "Info-macOS.plist"
-          - "mssh-mac.entitlements"
+          - Info-macOS.plist
+          - mssh-mac.entitlements
+          - mssh.xcconfig
+          - Configuration.storekit
+          - Services/AutoImportService.swift
+          - Services/ConnectionSyncBridge.swift
+          - Services/iCloudSyncService.swift
+          - Services/SSHFolderImporter.swift
+          - Services/TipJarService.swift
+          - Services/PortForwardManager.swift
+          - Views/MacContentView.swift
+          - Views/MacSetupGuideView.swift
+          - Views/SyncStatusView.swift
+          - Views/TipJarView.swift
+          - Views/PortForwardEditorView.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.m4ck.mssh
-        DEVELOPMENT_TEAM: CC24ZA67DK
-        MARKETING_VERSION: "1.2.2"
-        CURRENT_PROJECT_VERSION: "12"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftssh
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_KEY_UILaunchScreen_Generation: true
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
     dependencies:
       - package: SwiftTerm
-        product: SwiftTerm
       - package: Citadel
-        product: Citadel
     info:
       path: mssh/Info.plist
       properties:
-        CFBundleIdentifier: com.m4ck.mssh
-        CFBundleDisplayName: mSSH
-        CFBundleShortVersionString: "1.2.2"
-        CFBundleVersion: "12"
+        CFBundleDisplayName: SwiftSSH
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UIRequiresFullScreen: false
-        ITSAppUsesNonExemptEncryption: false
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
-        NSFaceIDUsageDescription: mSSH uses Face ID to protect access to your SSH connections and keys.
+        NSFaceIDUsageDescription: SwiftSSH uses Face ID to protect your SSH connections and keys.
+        NSLocalNetworkUsageDescription: SwiftSSH connects to SSH servers on your local network.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -69,74 +73,29 @@ targets:
           - UIInterfaceOrientationLandscapeRight
     entitlements:
       path: mssh/mssh.entitlements
-      properties:
-        com.apple.security.network.client: true
-        com.apple.developer.icloud-services:
-          - CloudKit
-        com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.m4ck.mssh
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)com.m4ck.mssh
-        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)com.m4ck.mssh
+      properties: {}
 
-  mssh-mac:
-    type: application
-    platform: macOS
+  SwiftSSHTests:
+    type: bundle.unit-test
+    platform: iOS
     sources:
-      - path: mssh
-        excludes:
-          - "Info.plist"
-          - "mssh.entitlements"
+      - SwiftSSHTests
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.m4ck.mssh
-        DEVELOPMENT_TEAM: CC24ZA67DK
-        MARKETING_VERSION: "1.2.2"
-        CURRENT_PROJECT_VERSION: "12"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftssh.tests
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
-      - package: SwiftTerm
-        product: SwiftTerm
-      - package: Citadel
-        product: Citadel
-    info:
-      path: mssh/Info-macOS.plist
-      properties:
-        CFBundleDisplayName: mSSH
-        CFBundleShortVersionString: "1.2.2"
-        CFBundleVersion: "12"
-        ITSAppUsesNonExemptEncryption: false
-        NSAppTransportSecurity:
-          NSAllowsArbitraryLoads: true
-    entitlements:
-      path: mssh/mssh-mac.entitlements
-      properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
-        # Read-only access to folders the user picks via NSOpenPanel —
-        # required so the .ssh importer can scan ~/.ssh/.
-        com.apple.security.files.user-selected.read-only: true
-        com.apple.developer.icloud-services:
-          - CloudKit
-        com.apple.developer.icloud-container-identifiers:
-          - iCloud.com.m4ck.mssh
-        keychain-access-groups:
-          - $(AppIdentifierPrefix)com.m4ck.mssh
-        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)com.m4ck.mssh
+      - target: SwiftSSH
 
 schemes:
-  mssh:
+  SwiftSSH:
     build:
       targets:
-        mssh: all
+        SwiftSSH: all
     run:
       config: Debug
-    profile:
-      config: Release
-  mssh-mac:
-    build:
+    test:
+      config: Debug
+      gatherCoverageData: true
       targets:
-        mssh-mac: all
-    run:
-      config: Debug
-    profile:
-      config: Release
+        - SwiftSSHTests

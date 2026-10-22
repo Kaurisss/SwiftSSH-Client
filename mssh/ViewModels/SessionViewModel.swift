@@ -21,7 +21,6 @@ final class SessionViewModel: Identifiable {
     var connectionAttempts: Int = 0
 
     private let sshService = SSHService()
-    private let portForwardManager = PortForwardManager()
     private(set) var client: SSHClient?
     private var hostKeyPromptContinuation: CheckedContinuation<HostKeyPromptResult, Never>?
 
@@ -83,19 +82,6 @@ final class SessionViewModel: Identifiable {
             // Reset attempt counter on success
             connectionAttempts = 0
 
-            // Start port forwards (non-blocking — failures surface as a
-            // status message but never abort the SSH session).
-            if let container = self.modelContainer {
-                let errors = portForwardManager.startAll(
-                    for: profile,
-                    on: client,
-                    modelContext: container.mainContext
-                )
-                if let firstError = errors.first {
-                    statusMessage = firstError.errorDescription ?? "Port forward failed"
-                }
-            }
-
             // Start terminal session with default size (will resize on layout)
             bridge.connect(client: client, cols: 80, rows: 24)
         } catch let error as SSHConnectionError {
@@ -114,7 +100,6 @@ final class SessionViewModel: Identifiable {
 
     func disconnect() {
         bridge.disconnect()
-        portForwardManager.stopAll(for: profile)
         // If a host key prompt is pending, reject it so the continuation
         // does not hang indefinitely.
         if hostKeyPromptContinuation != nil {
@@ -153,10 +138,7 @@ final class SessionViewModel: Identifiable {
     private func resolveAuthMethod() throws -> SSHAuthMethod {
         switch profile.authType {
         case .password:
-            // Try device-local first, then fall back to iCloud Keychain
-            let password = KeychainService.getPassword(for: profile.syncID)
-                ?? KeychainService.getPasswordSyncable(for: profile.syncID)
-                ?? ""
+            let password = KeychainService.getPassword(for: profile.syncID) ?? ""
             return .password(password)
         case .key:
             if let keyData = lookupPrivateKeyForProfile() {

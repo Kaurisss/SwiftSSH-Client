@@ -127,7 +127,7 @@ struct SSHConfigImportView: View {
                             Text("Browse for Config File")
                                 .font(.headline)
                                 .foregroundStyle(.primary)
-                            Text("Select your ~/.ssh/config file from iCloud Drive or Files")
+                            Text("Select your ~/.ssh/config file using Files")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -161,7 +161,7 @@ struct SSHConfigImportView: View {
             } header: {
                 Text("Select SSH Config")
             } footer: {
-                Text("Your SSH config file is typically located at ~/.ssh/config on your Mac. Copy it to iCloud Drive or paste its contents to import your saved connections.")
+                Text("Select your SSH config file or paste its contents to import your saved connections.")
             }
 
             Section {

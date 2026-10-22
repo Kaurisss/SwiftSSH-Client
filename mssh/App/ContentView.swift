@@ -141,7 +141,7 @@ private struct iPhoneConnectionsView: View {
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
             .searchable(text: $searchText, prompt: "Search connections")
-            .navigationTitle("mSSH")
+            .navigationTitle("SwiftSSH")
             #if os(iOS)
             .toolbarColorScheme(.dark, for: .navigationBar)
             #endif
@@ -598,7 +598,7 @@ private struct iPadConnectionsView: View {
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
             .searchable(text: $searchText, prompt: "Search connections")
-            .navigationTitle("mSSH")
+            .navigationTitle("SwiftSSH")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: AppSpacing.sm) {

@@ -168,11 +168,6 @@ struct ConnectionFormView: View {
                     Text("Organization")
                 }
 
-                // Port forwarding (existing profiles only — needs a stable syncID)
-                if let p = existingProfile {
-                    PortForwardListSection(profileSyncID: p.syncID)
-                }
-
                 // Test connection
                 Section {
                     Button {

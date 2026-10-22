@@ -36,9 +36,7 @@ struct ContentView: View {
             }
 
             Tab("Settings", systemImage: "gear", value: .settings) {
-                NavigationStack {
-                    SettingsView()
-                }
+                SettingsView()
             }
         }
         .tint(AppColors.accent)
@@ -131,7 +129,7 @@ private struct iPhoneConnectionsView: View {
                                 }
                         }
                     } header: {
-                        sectionHeader(title: "Active Sessions", count: sessionManager.sessions.count)
+                        sectionHeader(title: String(localized: "Active Sessions"), count: sessionManager.sessions.count)
                     }
                 }
 
@@ -142,34 +140,29 @@ private struct iPhoneConnectionsView: View {
             .background(AppColors.background)
             .searchable(text: $searchText, prompt: "Search connections")
             .navigationTitle("SwiftSSH")
-            #if os(iOS)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: AppSpacing.sm) {
-                        if !connections.isEmpty {
-                            Button(role: .destructive, action: { showClearAlert = true }) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 14))
-                            }
-                        }
-                        Menu {
-                            Button {
-                                showAddConnection = true
-                            } label: {
-                                Label("New Connection", systemImage: "plus")
-                            }
-                            Button {
-                                showImportConfig = true
-                            } label: {
-                                Label("Import SSH Config", systemImage: "doc.text")
-                            }
+                    Menu {
+                        Button {
+                            showAddConnection = true
                         } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .symbolRenderingMode(.hierarchical)
-                                .font(.title3)
+                            Label("New Connection", systemImage: "plus")
                         }
+                        Button {
+                            showImportConfig = true
+                        } label: {
+                            Label("Import SSH Config", systemImage: "doc.text")
+                        }
+                        if !connections.isEmpty {
+                            Divider()
+                            Button(role: .destructive) {
+                                showClearAlert = true
+                            } label: {
+                                Label("Clear All Connections", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Label("Add Connection", systemImage: "plus")
                     }
                 }
             }
@@ -205,7 +198,10 @@ private struct iPhoneConnectionsView: View {
                 .foregroundStyle(AppColors.accent)
 
             TextField("user@host:port", text: $quickConnectText)
-                .font(.system(.body, design: .monospaced))
+                .textFieldStyle(.plain)
+                .accessibilityLabel("Quick Connect")
+                .accessibilityIdentifier("quick-connect")
+                .font(.body)
                 .iOSOnlyTextInputAutocapitalization()
                 .autocorrectionDisabled()
                 #if os(iOS)
@@ -223,14 +219,9 @@ private struct iPhoneConnectionsView: View {
                 }
             }
         }
-        .padding(.horizontal, AppSpacing.md)
-        .padding(.vertical, AppSpacing.md)
-        .background(AppColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(AppColors.border, lineWidth: 0.5)
-        )
+        .padding(.horizontal, AppSpacing.lg)
+        .frame(minHeight: 48)
+        .background(AppColors.surface, in: Capsule())
     }
 
     // MARK: - Active session row (extracted so the List section stays compact)
@@ -247,7 +238,7 @@ private struct iPhoneConnectionsView: View {
                     Text(session.title)
                         .font(.system(.subheadline, design: .monospaced).weight(.medium))
                         .foregroundStyle(AppColors.textPrimary)
-                    Text(session.isConnected ? "Connected" : session.statusMessage)
+                    Text(session.isConnected ? String(localized: "Connected") : session.statusMessage)
                         .font(AppFonts.monoCaption)
                         .foregroundStyle(session.isConnected ? AppColors.connected : AppColors.textSecondary)
                 }
@@ -324,7 +315,7 @@ private struct iPhoneConnectionsView: View {
                 try? modelContext.save()
             } label: {
                 Label(
-                    connection.isFavorite ? "Unfavorite" : "Favorite",
+                    connection.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"),
                     systemImage: connection.isFavorite ? "star.slash" : "star"
                 )
             }
@@ -347,10 +338,9 @@ private struct iPhoneConnectionsView: View {
     /// inside `List` (no extra leading padding, dark background).
     private func sectionHeader(title: String, count: Int?) -> some View {
         HStack {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .default))
-                .foregroundStyle(AppColors.textTertiary)
-                .tracking(1.2)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppColors.textSecondary)
             if let count {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -363,7 +353,7 @@ private struct iPhoneConnectionsView: View {
             Spacer()
         }
         .padding(.vertical, 4)
-        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
     private var emptyState: some View {
@@ -490,7 +480,10 @@ private struct iPadConnectionsView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(AppColors.accent)
                         TextField("user@host:port", text: $quickConnectText)
-                            .font(.system(.body, design: .monospaced))
+                            .textFieldStyle(.plain)
+                            .accessibilityLabel("Quick Connect")
+                            .accessibilityIdentifier("quick-connect")
+                            .font(.body)
                             .iOSOnlyTextInputAutocapitalization()
                             .autocorrectionDisabled()
                             #if os(iOS)
@@ -499,7 +492,10 @@ private struct iPadConnectionsView: View {
                             .submitLabel(.go)
                             .onSubmit { performQuickConnect() }
                     }
-                    .listRowBackground(AppColors.surface)
+                    .padding(.horizontal, AppSpacing.lg)
+                    .frame(minHeight: 48)
+                    .background(AppColors.surface, in: Capsule())
+                    .listRowBackground(Color.clear)
                 }
 
                 // Active sessions
@@ -516,7 +512,7 @@ private struct iPadConnectionsView: View {
                                         .font(.system(.subheadline, design: .monospaced))
                                         .foregroundStyle(AppColors.textPrimary)
                                     Spacer()
-                                    Text(session.isConnected ? "Connected" : "...")
+                                    Text(session.isConnected ? String(localized: "Connected") : "...")
                                         .font(.caption2)
                                         .foregroundStyle(session.isConnected ? AppColors.connected : AppColors.textTertiary)
                                 }
@@ -579,7 +575,7 @@ private struct iPadConnectionsView: View {
                                     connection.isFavorite.toggle()
                                     try? modelContext.save()
                                 } label: {
-                                    Label(connection.isFavorite ? "Unfavorite" : "Favorite", systemImage: "star")
+                                    Label(connection.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"), systemImage: "star")
                                 }
                                 .tint(.yellow)
                             }
@@ -601,29 +597,27 @@ private struct iPadConnectionsView: View {
             .navigationTitle("SwiftSSH")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: AppSpacing.sm) {
-                        if !connections.isEmpty {
-                            Button(role: .destructive, action: { showClearAlert = true }) {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 14))
-                            }
-                        }
-                        Menu {
-                            Button {
-                                showAddConnection = true
-                            } label: {
-                                Label("New Connection", systemImage: "plus")
-                            }
-                            Button {
-                                showImportConfig = true
-                            } label: {
-                                Label("Import SSH Config", systemImage: "doc.text")
-                            }
+                    Menu {
+                        Button {
+                            showAddConnection = true
                         } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .symbolRenderingMode(.hierarchical)
-                                .font(.title3)
+                            Label("New Connection", systemImage: "plus")
                         }
+                        Button {
+                            showImportConfig = true
+                        } label: {
+                            Label("Import SSH Config", systemImage: "doc.text")
+                        }
+                        if !connections.isEmpty {
+                            Divider()
+                            Button(role: .destructive) {
+                                showClearAlert = true
+                            } label: {
+                                Label("Clear All Connections", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Label("Add Connection", systemImage: "plus")
                     }
                 }
             }
@@ -807,7 +801,7 @@ struct ConnectionRow: View {
                     }
                     Image(systemName: profile.authType == .key ? "key.fill" : "lock.fill")
                         .font(.system(size: 9))
-                    Text(keyMissingOnDevice ? "No Key" : (profile.authType == .key ? "Key" : "Pass"))
+                    Text(keyMissingOnDevice ? String(localized: "No Key") : (profile.authType == .key ? String(localized: "Key") : String(localized: "Pass")))
                         .font(.system(size: 9, weight: .medium))
                 }
                 .foregroundStyle(keyMissingOnDevice ? AppColors.warning : AppColors.textTertiary)

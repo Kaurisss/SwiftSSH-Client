@@ -11,7 +11,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
     weak var terminalView: TerminalView?
 
     @Published var isConnected = false
-    @Published var statusMessage = "Disconnected"
+    @Published var statusMessage = String(localized: "Disconnected")
 
     /// Called on MainActor whenever isConnected or statusMessage changes.
     var onStateChange: ((_ connected: Bool, _ status: String) -> Void)?
@@ -44,7 +44,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         }
 
         isDisconnecting = false
-        updateState(connected: false, status: "Opening terminal...")
+        updateState(connected: false, status: String(localized: "Opening terminal..."))
 
         connectionTask = Task { [weak self] in
             guard let self else { return }
@@ -63,13 +63,13 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 didSetTerminalError = true
             } catch {
                 if !self.isDisconnecting {
-                    self.updateState(connected: false, status: "Error: \(error.localizedDescription)")
+                    self.updateState(connected: false, status: String(localized: "Error: \(error.localizedDescription)"))
                     didSetTerminalError = true
                 }
             }
             self.writer = nil
             if !self.isDisconnecting && !didSetTerminalError {
-                self.updateState(connected: false, status: "Disconnected")
+                self.updateState(connected: false, status: String(localized: "Disconnected"))
             }
         }
     }
@@ -82,7 +82,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         // Signal the write loop to stop
         writeStreamContinuation?.finish()
         writeStreamContinuation = nil
-        updateState(connected: false, status: "Disconnected")
+        updateState(connected: false, status: String(localized: "Disconnected"))
     }
 
     /// Queue bytes for delivery to the SSH channel.
@@ -144,7 +144,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
 
             await MainActor.run {
                 self.writer = outbound
-                self.updateState(connected: true, status: "Connected")
+                self.updateState(connected: true, status: String(localized: "Connected"))
             }
 
             // Writer task: drains the write stream ONE item at a time, guaranteeing
@@ -160,7 +160,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                         // Write failure means the channel is dead; report and bail.
                         await MainActor.run { [weak self] in
                             guard let self, !self.isDisconnecting else { return }
-                            self.updateState(connected: false, status: "Connection lost")
+                            self.updateState(connected: false, status: String(localized: "Connection lost"))
                         }
                         break
                     }
@@ -193,7 +193,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 writerTask.cancel()
                 await MainActor.run {
                     if !self.isDisconnecting {
-                        self.updateState(connected: false, status: "Connection lost: \(error.localizedDescription)")
+                        self.updateState(connected: false, status: String(localized: "Connection lost: \(error.localizedDescription)"))
                     }
                 }
             }
@@ -206,17 +206,17 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
     private func friendlySSHError(_ error: NIOSSHError) -> String {
         let desc = String(describing: error)
         if desc.contains("algorithm") || desc.contains("negotiation") {
-            return "Algorithm negotiation failed. This server may use unsupported encryption."
+            return String(localized: "Algorithm negotiation failed. This server may use unsupported encryption.")
         }
         if desc.contains("auth") {
-            return "Authentication failed. Check your password or SSH key."
+            return String(localized: "Authentication failed. Check your password or SSH key.")
         }
         if desc.contains("channel") || desc.contains("open") {
-            return "Failed to open terminal channel."
+            return String(localized: "Failed to open terminal channel.")
         }
         if desc.contains("banner") || desc.contains("protocol") {
-            return "SSH protocol error. The server may not be running SSH."
+            return String(localized: "SSH protocol error. The server may not be running SSH.")
         }
-        return "SSH error: \(error.localizedDescription)"
+        return String(localized: "SSH error: \(error.localizedDescription)")
     }
 }

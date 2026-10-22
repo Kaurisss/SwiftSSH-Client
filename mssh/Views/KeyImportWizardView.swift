@@ -19,8 +19,8 @@ enum KeyImportSource: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .files: return "Pick key files from any accessible location"
-        case .clipboard: return "Paste a private key copied to the clipboard"
+        case .files: return String(localized: "Pick key files from any accessible location")
+        case .clipboard: return String(localized: "Paste a private key copied to the clipboard")
         }
     }
 }
@@ -34,9 +34,9 @@ private enum WizardStep: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .chooseSource: return "Choose Source"
-        case .previewKeys: return "Preview Keys"
-        case .confirm: return "Confirm Import"
+        case .chooseSource: return String(localized: "Choose Source")
+        case .previewKeys: return String(localized: "Preview Keys")
+        case .confirm: return String(localized: "Confirm Import")
         }
     }
 }
@@ -197,7 +197,7 @@ struct KeyImportWizardView: View {
                                 .frame(width: 36)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(source.rawValue)
+                                Text(LocalizedStringKey(source.rawValue))
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text(source.description)
@@ -390,18 +390,18 @@ struct KeyImportWizardView: View {
 
     private func handleClipboard() {
         guard let text = AppClipboard.paste(), !text.isEmpty else {
-            errorMessage = "The clipboard is empty or does not contain text."
+            errorMessage = String(localized: "The clipboard is empty or does not contain text.")
             return
         }
 
         let format = SSHKeyImporter.detectFormat(text)
         if format == .unknown {
-            errorMessage = "The clipboard does not appear to contain an SSH private key."
+            errorMessage = String(localized: "The clipboard does not appear to contain an SSH private key.")
             return
         }
 
         let preview = SSHKeyImporter.preview(text: text, fileName: "clipboard-key")
-        keySelections = [KeySelection(preview: preview, selected: true, label: "Clipboard Key")]
+        keySelections = [KeySelection(preview: preview, selected: true, label: String(localized: "Clipboard Key"))]
         withAnimation { step = .previewKeys }
     }
 
@@ -481,7 +481,7 @@ struct KeyImportWizardView: View {
         isImporting = false
 
         if importedCount == 0 {
-            errorMessage = lastError ?? "Import failed"
+            errorMessage = lastError ?? String(localized: "Import failed")
         } else {
             importResults = (imported: importedCount, errors: errorCount)
         }

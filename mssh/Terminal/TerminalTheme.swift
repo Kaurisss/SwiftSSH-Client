@@ -7,9 +7,9 @@ struct TerminalTheme: Equatable {
     var name: String
 
     static let `default` = TerminalTheme(
-        background: Color(red: 0.06, green: 0.06, blue: 0.08),
-        foreground: Color(red: 0.88, green: 0.88, blue: 0.90),
-        cursorColor: Color(red: 0.30, green: 0.85, blue: 0.85),
+        background: AppColors.terminalBg,
+        foreground: AppColors.textPrimary,
+        cursorColor: AppColors.accent,
         name: "Default"
     )
 

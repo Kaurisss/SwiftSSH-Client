@@ -20,6 +20,7 @@ private func decscusrEscape(style: AppPreferences.CursorStyle, blink: Bool) -> [
 #if os(iOS)
 /// UIViewRepresentable wrapper for SwiftTerm's TerminalView (iOS)
 struct TerminalViewWrapper: UIViewRepresentable {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var bridge: SSHTerminalBridge
     @AppStorage(AppPreferences.Key.terminalThemeName)
     private var themeName = AppPreferences.Default.terminalThemeName
@@ -42,11 +43,17 @@ struct TerminalViewWrapper: UIViewRepresentable {
         return UIFont.monospacedSystemFont(ofSize: pt, weight: .regular)
     }
 
+    private func resolvedColor(_ color: Color) -> UIColor {
+        UIColor(color).resolvedColor(with: UITraitCollection(
+            userInterfaceStyle: colorScheme == .dark ? .dark : .light
+        ))
+    }
+
     func makeUIView(context: Context) -> TerminalView {
         let terminal = TerminalView()
         terminal.terminalDelegate = context.coordinator
-        terminal.nativeBackgroundColor = UIColor(theme.background)
-        terminal.nativeForegroundColor = UIColor(theme.foreground)
+        terminal.nativeBackgroundColor = resolvedColor(theme.background)
+        terminal.nativeForegroundColor = resolvedColor(theme.foreground)
         terminal.font = resolvedFont
         terminal.inputAccessoryView = TerminalAccessoryBar(terminal: terminal)
         bridge.terminalView = terminal
@@ -61,8 +68,8 @@ struct TerminalViewWrapper: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: TerminalView, context: Context) {
-        uiView.nativeBackgroundColor = UIColor(theme.background)
-        uiView.nativeForegroundColor = UIColor(theme.foreground)
+        uiView.nativeBackgroundColor = resolvedColor(theme.background)
+        uiView.nativeForegroundColor = resolvedColor(theme.foreground)
 
         let target = resolvedFont
         if uiView.font.fontName != target.fontName

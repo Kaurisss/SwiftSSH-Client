@@ -13,7 +13,8 @@
 - 不启用应用管理的 iCloud 同步、自动云端导入、打赏或占位端口转发。
 - 数据库打开失败显示错误及重试入口，保留数据库，不自动清空或改用临时内存库。
 
-保留上游英文界面及图标，本轮未做全量汉化或视觉重设计。
+界面支持简体中文和英文，默认跟随设备语言。应用外观默认跟随系统，也可在“设置 → 应用外观”中选择浅色或深色。
+默认终端主题随外观切换，其他终端主题仍可独立选择。沿用上游应用图标。
 系统“文件”选择器仍可由用户主动选择 iCloud Drive 等文件提供者；这不是应用自动同步。
 
 ## GitHub Actions 构建 unsigned IPA
@@ -32,7 +33,7 @@ unsigned IPA 需自行签名后才能安装到常规 iPhone / iPad。
 Windows 用户可用 [project/初始化.cmd](project/初始化.cmd) 配置本地证书，
 再运行 [project/一键签名安装.cmd](project/一键签名安装.cmd) 自动下载、签名和安装，
 详见 [SIGNING.md](project/SIGNING.md)。本地流程不需要 WSL 或 xtool。
-此工作流只做设备端 Release 构建，不运行模拟器 XCTest；测试命令见下文。
+此工作流会先运行单元测试和中文界面/外观切换测试，上传 `interface-screenshots`，然后构建设备端 Release IPA。
 
 ## 在 Mac 上运行
 
@@ -47,7 +48,7 @@ open SwiftSSH.xcodeproj
 
 **必须先生成工程。** 根目录的 `project.yml` 是唯一构建配置来源。
 上游 `mssh.xcodeproj` 仅作参考，仍含原作者配置，请勿打开它来构建本分支。
-此 Windows 环境尚未生成新工程、执行 iOS 编译或真机测试。
+本地为 Windows 环境；工程生成、iOS 编译和模拟器测试由 GitHub Actions 执行。
 
 模拟器直接选择 `SwiftSSH` scheme 运行，不需要设置开发团队。
 真机运行时，在 Signing & Capabilities 选择自己的 Team，并将
@@ -77,6 +78,7 @@ DESTINATION='platform=iOS Simulator,name=iPhone 16' bash build.sh
 
 ```bash
 python scripts/check_baseline.py
+python -m unittest discover -s scripts -p test_interface.py -v
 ```
 
 随后在测试服务器做烟测：密码登录、Ed25519 登录、拒绝未知指纹、终端输入/调整尺寸、
@@ -88,7 +90,10 @@ SFTP 小文件上传下载、后台返回后解锁。当前没有真实服务器
 - `mssh/App/msshApp.swift`：启动、锁屏及存储错误界面。
 - `mssh/Services/LocalStore.swift`：仅本地、失败向上传递的存储初始化。
 - `mssh/Services/KeychainService.swift`：设备本地凭据。
-- `SwiftSSHTests/`：回归测试。
+- `mssh/Resources/Localizable.xcstrings`：英文/简体中文文案及格式化模板。
+- `mssh/App/DesignSystem.swift`：自适应配色与外观模式。
+- `SwiftSSHTests/`：存储、钥匙串、外观及本地化回归测试。
+- `SwiftSSHUITests/`：模拟器中的中文界面、外观切换和截图。
 - `UPSTREAM.md`：上游来源及本轮改动边界。
 
 macOS、云同步、打赏等上游源码保留作参考，已从当前 target 排除。

@@ -1,35 +1,56 @@
 import SwiftUI
+import UIKit
 
-// MARK: - mSSH Design System
-// Minimal dark theme inspired by iTerm2 and modern terminal apps.
+// MARK: - Adaptive App Colors
 
 enum AppColors {
-    // Core palette
-    static let background = Color(red: 0.07, green: 0.07, blue: 0.09)        // Near-black
-    static let surface = Color(red: 0.11, green: 0.11, blue: 0.14)           // Card/cell background
-    static let surfaceElevated = Color(red: 0.15, green: 0.15, blue: 0.18)   // Elevated surfaces
-    static let border = Color.white.opacity(0.08)                              // Subtle borders
-    static let borderActive = Color.white.opacity(0.15)                        // Active borders
+    static let background = Color(uiColor: .systemGroupedBackground)
+    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let surfaceElevated = Color(uiColor: .tertiarySystemGroupedBackground)
+    static let border = Color(uiColor: .separator).opacity(0.35)
+    static let borderActive = Color(uiColor: .separator)
 
-    // Text
-    static let textPrimary = Color(red: 0.93, green: 0.93, blue: 0.95)
-    static let textSecondary = Color(red: 0.55, green: 0.55, blue: 0.60)
-    static let textTertiary = Color(red: 0.35, green: 0.35, blue: 0.40)
+    static let textPrimary = Color(uiColor: .label)
+    static let textSecondary = Color(uiColor: .secondaryLabel)
+    static let textTertiary = Color(uiColor: .tertiaryLabel)
 
-    // Accent - Cyan/Teal
-    static let accent = Color(red: 0.30, green: 0.85, blue: 0.85)
-    static let accentDim = Color(red: 0.30, green: 0.85, blue: 0.85).opacity(0.15)
+    static let accent = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.30, green: 0.85, blue: 0.85, alpha: 1)
+            : UIColor(red: 0, green: 0.43, blue: 0.46, alpha: 1)
+    })
+    static let accentDim = accent.opacity(0.12)
 
-    // Status
-    static let connected = Color(red: 0.30, green: 0.85, blue: 0.45)
-    static let connectedDim = Color(red: 0.30, green: 0.85, blue: 0.45).opacity(0.15)
-    static let warning = Color(red: 1.0, green: 0.75, blue: 0.25)
-    static let error = Color(red: 0.95, green: 0.30, blue: 0.30)
-    static let errorDim = Color(red: 0.95, green: 0.30, blue: 0.30).opacity(0.15)
+    static let connected = Color(uiColor: .systemGreen)
+    static let connectedDim = connected.opacity(0.15)
+    static let warning = Color(uiColor: .systemOrange)
+    static let error = Color(uiColor: .systemRed)
+    static let errorDim = error.opacity(0.15)
 
-    // Terminal
-    static let terminalBg = Color(red: 0.06, green: 0.06, blue: 0.08)
+    static let terminalBg = Color(uiColor: .systemBackground)
     static let terminalCursor = accent
+}
+
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .system: return "Follow System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 enum AppFonts {
@@ -75,10 +96,9 @@ struct AppSectionHeader: View {
 
     var body: some View {
         HStack {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold, design: .default))
-                .foregroundStyle(AppColors.textTertiary)
-                .tracking(1.2)
+            Text(LocalizedStringKey(title))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppColors.textSecondary)
             if let count {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -118,7 +138,6 @@ extension View {
 struct AppThemeModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .preferredColorScheme(.dark)
             .tint(AppColors.accent)
     }
 }

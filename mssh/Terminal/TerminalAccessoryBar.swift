@@ -45,11 +45,11 @@ final class TerminalAccessoryBar: UIView {
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
 
     // Colors matching AppColors design system
-    private let bgColor = UIColor(red: 0.11, green: 0.11, blue: 0.14, alpha: 1)
-    private let keyColor = UIColor(red: 0.18, green: 0.18, blue: 0.22, alpha: 1)
-    private let keyTextColor = UIColor(red: 0.85, green: 0.85, blue: 0.88, alpha: 1)
-    private let accentColor = UIColor(red: 0.30, green: 0.85, blue: 0.85, alpha: 1)
-    private let borderColor = UIColor.white.withAlphaComponent(0.06)
+    private let bgColor = UIColor.secondarySystemBackground
+    private let keyColor = UIColor.tertiarySystemBackground
+    private let keyTextColor = UIColor.label
+    private let accentColor = UIColor(AppColors.accent)
+    private let borderColor = UIColor.separator.withAlphaComponent(0.3)
 
     init(terminal: TerminalView) {
         self.terminal = terminal

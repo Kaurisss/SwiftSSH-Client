@@ -12,7 +12,7 @@ struct SFTPTransferView: View {
                 .foregroundStyle(AppColors.accent)
                 .symbolEffect(.pulse, isActive: progress < 1.0)
 
-            Text(transferType == .download ? "Downloading" : "Uploading")
+            Text(transferType == .download ? String(localized: "Downloading") : String(localized: "Uploading"))
                 .font(.system(.subheadline, design: .monospaced).weight(.medium))
                 .foregroundStyle(AppColors.textPrimary)
 

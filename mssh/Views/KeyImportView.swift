@@ -50,7 +50,7 @@ struct KeyImportView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Import") {
                         viewModel.importKey(
-                            label: label.isEmpty ? "Imported Key" : label,
+                            label: label.isEmpty ? String(localized: "Imported Key") : label,
                             pemText: pemText,
                             modelContext: modelContext
                         )

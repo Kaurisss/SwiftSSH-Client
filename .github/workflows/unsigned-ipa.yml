@@ -9,7 +9,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     defaults:
@@ -32,8 +32,31 @@ jobs:
       - name: Check configuration and generate project
         run: |
           python3 scripts/check_baseline.py
+          python3 -m unittest discover -s scripts -p test_interface.py -v
           python3 -m unittest discover -s project/scripts -p test_local_sign_install.py -v
           xcodegen generate
+
+      - name: Verify Chinese and appearance in simulator
+        run: |
+          mkdir -p build
+          xcodebuild test \
+            -project SwiftSSH.xcodeproj \
+            -scheme SwiftSSH \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            -resultBundlePath "$PWD/build/UITests.xcresult" \
+            -derivedDataPath "$PWD/build/SimulatorData" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/tests.log
+          xcrun xcresulttool export attachments \
+            --path build/UITests.xcresult --output-path build/ui-screenshots
+
+      - name: Upload interface screenshots
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: interface-screenshots
+          path: build/ui-screenshots
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Archive without signing
         run: |
@@ -76,6 +99,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: archive-log
-          path: build/archive.log
+          path: |
+            build/archive.log
+            build/tests.log
+            build/UITests.xcresult
           if-no-files-found: ignore
           retention-days: 7

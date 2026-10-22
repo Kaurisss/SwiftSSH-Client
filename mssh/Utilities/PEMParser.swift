@@ -19,12 +19,12 @@ enum PEMParser {
 
         var errorDescription: String? {
             switch self {
-            case .invalidPEMStructure:      return "Invalid PEM structure"
-            case .unsupportedKeyType:       return "Unsupported key type"
-            case .invalidASN1:              return "Invalid ASN.1 / DER encoding"
-            case .invalidOpenSSHKey:        return "Invalid OpenSSH private key"
-            case .encryptedKeyNotSupported: return "Encrypted keys are not yet supported"
-            case .rsaComponentExtractionFailed: return "Failed to extract RSA components"
+            case .invalidPEMStructure:      return String(localized: "Invalid PEM structure")
+            case .unsupportedKeyType:       return String(localized: "Unsupported key type")
+            case .invalidASN1:              return String(localized: "Invalid ASN.1 / DER encoding")
+            case .invalidOpenSSHKey:        return String(localized: "Invalid OpenSSH private key")
+            case .encryptedKeyNotSupported: return String(localized: "Encrypted keys are not yet supported")
+            case .rsaComponentExtractionFailed: return String(localized: "Failed to extract RSA components")
             }
         }
     }

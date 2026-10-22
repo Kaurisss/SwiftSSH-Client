@@ -21,6 +21,8 @@ struct KnownHostsView: View {
                         .font(AppFonts.subheading)
                         .foregroundStyle(AppColors.textSecondary)
                     Text("Host keys appear after your first connection")
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                         .font(.caption)
                         .foregroundStyle(AppColors.textTertiary)
                     Spacer()
@@ -50,7 +52,8 @@ struct KnownHostsView: View {
                 }
             }
         }
-        .background(AppColors.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("Known Hosts")
         .iOSOnlyNavigationBarTitleDisplayMode()
         .sheet(item: $selectedHost) { host in

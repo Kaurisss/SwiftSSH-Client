@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(AppPreferences.Key.terminalBlinkCursor)
     private var blinkCursor = AppPreferences.Default.terminalBlinkCursor
 
+    @AppStorage("appAppearance") private var appearance = AppAppearance.system.rawValue
     @AppStorage("biometricEnabled") private var biometricEnabled = false
     @AppStorage("lockOnBackground") private var lockOnBackground = true
 
@@ -26,9 +27,9 @@ struct SettingsView: View {
 
     private var biometricLabel: String {
         switch BiometricService.biometricType() {
-        case .faceID: return "Require Face ID"
-        case .touchID: return "Require Touch ID"
-        case .none: return "Require Biometrics"
+        case .faceID: return String(localized: "Require Face ID")
+        case .touchID: return String(localized: "Require Touch ID")
+        case .none: return String(localized: "Require Biometrics")
         }
     }
 
@@ -51,7 +52,19 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Appearance
+                Section {
+                    Picker("Color Scheme", selection: $appearance) {
+                        ForEach(AppAppearance.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("appearance-picker")
+                } header: {
+                    Label("App Appearance", systemImage: "circle.lefthalf.filled")
+                }
+
+                // Terminal theme
                 Section {
                     ForEach(TerminalTheme.allThemes, id: \.name) { theme in
                         Button {
@@ -60,7 +73,7 @@ struct SettingsView: View {
                             HStack(spacing: AppSpacing.md) {
                                 ThemeSwatch(theme: theme)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(theme.name)
+                                    Text(LocalizedStringKey(theme.name))
                                         .font(.subheadline)
                                         .foregroundStyle(AppColors.textPrimary)
                                     Text("$ ssh root@host")
@@ -81,16 +94,16 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
                 } header: {
-                    Label("Appearance", systemImage: "paintpalette")
+                    Label("Terminal Theme", systemImage: "paintpalette")
                 } footer: {
-                    Text("Theme applies on the next terminal repaint or new session.")
+                    Text("The default terminal theme follows the app appearance. Other terminal themes can be selected separately.")
                 }
 
                 // Terminal
                 Section {
                     Picker(selection: $fontFamily) {
                         ForEach(AppPreferences.availableFontFamilies, id: \.self) { name in
-                            Text(name).tag(name)
+                            Text(LocalizedStringKey(name)).tag(name)
                         }
                     } label: {
                         Label("Font Family", systemImage: "textformat")
@@ -157,7 +170,9 @@ struct SettingsView: View {
                     if !biometricsAvailable {
                         Text("Biometric authentication is not available on this device.")
                     } else if biometricEnabled {
-                        Text("Authentication required when opening the app\(lockOnBackground ? " and returning from background" : "").")
+                        Text(lockOnBackground
+                            ? String(localized: "Authentication required when opening the app and returning from background.")
+                            : String(localized: "Authentication required when opening the app."))
                     }
                 }
 

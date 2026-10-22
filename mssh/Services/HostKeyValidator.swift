@@ -203,7 +203,7 @@ enum HostKeyValidationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .rejected:
-            return "Host key was rejected by the user."
+            return String(localized: "Host key was rejected by the user.")
         }
     }
 }

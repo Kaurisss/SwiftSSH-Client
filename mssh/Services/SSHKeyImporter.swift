@@ -27,7 +27,7 @@ enum SSHKeyType: String {
         case .ecdsa256: return "ECDSA-256"
         case .ecdsa384: return "ECDSA-384"
         case .ecdsa521: return "ECDSA-521"
-        case .unknown: return "Unknown"
+        case .unknown: return String(localized: "Unknown")
         }
     }
 }
@@ -60,15 +60,15 @@ enum SSHKeyImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notAPrivateKey:
-            return "The file does not appear to contain a private key."
+            return String(localized: "The file does not appear to contain a private key.")
         case .unsupportedFormat:
-            return "This key format is not supported."
+            return String(localized: "This key format is not supported.")
         case .encryptedKeyNeedsPassphrase:
-            return "This key is encrypted with a passphrase. Encrypted key import is not yet supported."
+            return String(localized: "This key is encrypted with a passphrase. Encrypted key import is not yet supported.")
         case .invalidKeyData:
-            return "The key data could not be parsed."
+            return String(localized: "The key data could not be parsed.")
         case .fileReadFailed(let path):
-            return "Could not read file: \(path)"
+            return String(localized: "Could not read file: \(path)")
         }
     }
 }

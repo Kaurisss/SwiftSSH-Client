@@ -102,7 +102,7 @@ enum ConnectionListSorter {
 
         let favorites = recencySorted(connections.filter { $0.isFavorite })
         if !favorites.isEmpty {
-            sections.append(ConnectionSection(id: "__favorites__", title: "Favorites", isFavorites: true, items: favorites))
+            sections.append(ConnectionSection(id: "__favorites__", title: String(localized: "Favorites"), isFavorites: true, items: favorites))
         }
 
         let nonFavorites = connections.filter { !$0.isFavorite }
@@ -128,7 +128,7 @@ enum ConnectionListSorter {
         if let ungrouped = grouped[nil], !ungrouped.isEmpty {
             // Only label this section "Other" when there are also named groups;
             // otherwise it's the only section and "Connections" is clearer.
-            let title = namedGroups.isEmpty ? "Connections" : "Other"
+            let title = namedGroups.isEmpty ? String(localized: "Connections") : String(localized: "Other")
             sections.append(ConnectionSection(id: "__ungrouped__", title: title, isFavorites: false, items: recencySorted(ungrouped)))
         }
 

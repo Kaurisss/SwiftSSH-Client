@@ -103,7 +103,7 @@ struct SSHConfigImportView: View {
 
         guard let data = try? Data(contentsOf: url),
               let text = String(data: data, encoding: .utf8) else {
-            errorMessage = "Could not read the file."
+            errorMessage = String(localized: "Could not read the file.")
             return
         }
         parseConfig(text)
@@ -329,14 +329,14 @@ struct SSHConfigImportView: View {
         case .success(let urls):
             guard let url = urls.first else { return }
             guard url.startAccessingSecurityScopedResource() else {
-                errorMessage = "Could not access the selected file."
+                errorMessage = String(localized: "Could not access the selected file.")
                 return
             }
             defer { url.stopAccessingSecurityScopedResource() }
 
             guard let data = try? Data(contentsOf: url),
                   let text = String(data: data, encoding: .utf8) else {
-                errorMessage = "Could not read the selected file."
+                errorMessage = String(localized: "Could not read the selected file.")
                 return
             }
             parseConfig(text)
@@ -398,9 +398,9 @@ struct SSHConfigImportView: View {
 // MARK: - Bullet Point Helper
 
 private struct BulletPoint: View {
-    let text: String
+    let text: LocalizedStringKey
 
-    init(_ text: String) {
+    init(_ text: LocalizedStringKey) {
         self.text = text
     }
 

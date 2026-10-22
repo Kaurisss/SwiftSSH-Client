@@ -50,7 +50,7 @@ struct TerminalSessionView: View {
         .onAppear {
             session.modelContainer = modelContext.container
             connectionStartTime = Date()
-            if !session.isConnected && session.statusMessage != "Connecting..." {
+            if !session.isConnected && session.statusMessage != String(localized: "Connecting...") {
                 Task { await session.connect() }
             }
         }
@@ -149,7 +149,7 @@ struct TerminalSessionView: View {
     /// user gets immediate feedback instead of a silent blinking cursor.
     private var shouldShowErrorOverlay: Bool {
         if session.isConnected { return false }
-        if session.statusMessage.isEmpty || session.statusMessage == "Disconnected" {
+        if session.statusMessage.isEmpty || session.statusMessage == String(localized: "Disconnected") {
             return false
         }
         return true
@@ -159,7 +159,7 @@ struct TerminalSessionView: View {
     /// style (spinner instead of warning icon, no Retry/Close).
     private var isLoading: Bool {
         !session.isConnected
-            && (session.statusMessage == "Connecting..." || session.statusMessage == "Opening terminal...")
+            && (session.statusMessage == String(localized: "Connecting...") || session.statusMessage == String(localized: "Opening terminal..."))
     }
 
     // MARK: - Error Banner
@@ -256,7 +256,7 @@ struct ConnectionInfoPopover: View {
                 infoRow(
                     session.isConnected ? "checkmark.circle.fill" : "xmark.circle",
                     "Status",
-                    session.isConnected ? "Connected" : session.statusMessage,
+                    session.isConnected ? String(localized: "Connected") : session.statusMessage,
                     color: session.isConnected ? AppColors.connected : AppColors.error
                 )
                 if session.isConnected {
@@ -264,7 +264,7 @@ struct ConnectionInfoPopover: View {
                 }
                 infoRow(
                     "lock.fill", "Auth",
-                    session.profile.authType == .password ? "Password" : "SSH Key"
+                    session.profile.authType == .password ? String(localized: "Password") : String(localized: "SSH Key")
                 )
             }
         }
@@ -273,7 +273,7 @@ struct ConnectionInfoPopover: View {
         .background(AppColors.surface)
     }
 
-    private func infoRow(_ icon: String, _ label: String, _ value: String, color: Color = AppColors.textPrimary) -> some View {
+    private func infoRow(_ icon: String, _ label: LocalizedStringKey, _ value: String, color: Color = AppColors.textPrimary) -> some View {
         HStack(spacing: AppSpacing.sm) {
             Image(systemName: icon)
                 .font(.system(size: 12))
@@ -296,11 +296,11 @@ struct ConnectionInfoPopover: View {
         let minutes = (Int(interval) % 3600) / 60
         let seconds = Int(interval) % 60
         if hours > 0 {
-            return "\(hours)h \(minutes)m \(seconds)s"
+            return String(localized: "\(hours)h \(minutes)m \(seconds)s")
         } else if minutes > 0 {
-            return "\(minutes)m \(seconds)s"
+            return String(localized: "\(minutes)m \(seconds)s")
         } else {
-            return "\(seconds)s"
+            return String(localized: "\(seconds)s")
         }
     }
 }

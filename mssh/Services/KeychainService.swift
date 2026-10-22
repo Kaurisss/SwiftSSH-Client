@@ -130,7 +130,7 @@ enum KeychainError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .saveFailed(let status):
-            return "Keychain save failed with status: \(status)"
+            return String(localized: "Keychain save failed with status: \(status)")
         }
     }
 }

@@ -20,7 +20,8 @@ struct KeyManagerView: View {
                 keyList
             }
         }
-        .background(AppColors.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppColors.background.ignoresSafeArea())
         .navigationTitle("SSH Keys")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -52,8 +53,7 @@ struct KeyManagerView: View {
                     }
 
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
+                    Label("Add Key", systemImage: "plus")
                 }
             }
         }
@@ -268,7 +268,7 @@ struct GenerateKeySheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Generate") {
-                        viewModel.generateKey(label: label.isEmpty ? "My Key" : label, modelContext: modelContext)
+                        viewModel.generateKey(label: label.isEmpty ? String(localized: "My Key") : label, modelContext: modelContext)
                         dismiss()
                     }
                     .fontWeight(.semibold)

@@ -10,6 +10,9 @@ DerivedData/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcscheme
 
+# Python test caches
+__pycache__/
+
 # Swift Package Manager
 .swiftpm/
 .build/

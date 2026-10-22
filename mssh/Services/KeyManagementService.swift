@@ -127,8 +127,8 @@ enum KeyError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPEM: return "Invalid PEM key data"
-        case .generationFailed: return "Key generation failed"
+        case .invalidPEM: return String(localized: "Invalid PEM key data")
+        case .generationFailed: return String(localized: "Key generation failed")
         }
     }
 }

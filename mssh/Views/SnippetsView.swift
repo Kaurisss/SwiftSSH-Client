@@ -178,7 +178,7 @@ struct SnippetEditorView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
-            .navigationTitle(snippet == nil ? "New Snippet" : "Edit Snippet")
+            .navigationTitle(snippet == nil ? String(localized: "New Snippet") : String(localized: "Edit Snippet"))
             .iOSOnlyNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

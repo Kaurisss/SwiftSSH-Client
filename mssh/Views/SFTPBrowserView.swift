@@ -108,8 +108,8 @@ struct SFTPBrowserView: View {
             } message: {
                 if let item = viewModel.itemToDelete {
                     Text(item.isDirectory
-                         ? "This will delete the directory. It must be empty."
-                         : "This file will be permanently deleted.")
+                         ? String(localized: "This will delete the directory. It must be empty.")
+                         : String(localized: "This file will be permanently deleted."))
                 }
             }
             .fileImporter(

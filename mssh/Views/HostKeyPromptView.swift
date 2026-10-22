@@ -40,7 +40,7 @@ struct HostKeyPromptView: View {
                     .foregroundStyle(isWarning ? AppColors.error : AppColors.accent)
             }
 
-            Text(isWarning ? "Host Key Changed" : "Unknown Host Key")
+            Text(isWarning ? String(localized: "Host Key Changed") : String(localized: "Unknown Host Key"))
                 .font(.system(.headline, design: .monospaced))
                 .foregroundStyle(AppColors.textPrimary)
         }
@@ -52,8 +52,8 @@ struct HostKeyPromptView: View {
     private var detailSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text(isWarning
-                 ? "The host key has changed. This could indicate a MITM attack, or the server was reinstalled."
-                 : "First time connecting to this host. Verify the fingerprint before continuing."
+                 ? String(localized: "The host key has changed. This could indicate a MITM attack, or the server was reinstalled.")
+                 : String(localized: "First time connecting to this host. Verify the fingerprint before continuing.")
             )
             .font(.caption)
             .foregroundStyle(AppColors.textSecondary)
@@ -91,7 +91,7 @@ struct HostKeyPromptView: View {
             .tint(AppColors.textSecondary)
 
             Button(action: onAccept) {
-                Text(isWarning ? "Trust Anyway" : "Trust")
+                Text(isWarning ? String(localized: "Trust Anyway") : String(localized: "Trust"))
                     .font(.system(.subheadline, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.md)
@@ -103,7 +103,7 @@ struct HostKeyPromptView: View {
         .padding(.bottom, AppSpacing.lg)
     }
 
-    private func fingerprintRow(_ label: String, _ value: String) -> some View {
+    private func fingerprintRow(_ label: LocalizedStringKey, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
                 .font(.system(size: 10, weight: .medium))

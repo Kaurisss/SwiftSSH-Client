@@ -46,9 +46,9 @@ final class AppPreferences {
 
         var displayName: String {
             switch self {
-            case .block: return "Block"
-            case .bar: return "Bar"
-            case .underline: return "Underline"
+            case .block: return String(localized: "Block")
+            case .bar: return String(localized: "Bar")
+            case .underline: return String(localized: "Underline")
             }
         }
     }

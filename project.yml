@@ -3,7 +3,8 @@ options:
   bundleIdPrefix: com.example
   deploymentTarget:
     iOS: "18.0"
-  xcodeVersion: "16.0"
+  xcodeVersion: "26.0"
+  developmentLanguage: en
   generateEmptyDirectories: true
 
 settings:
@@ -46,8 +47,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftssh
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.2.0"
+        CURRENT_PROJECT_VERSION: "2"
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies:
       - package: SwiftTerm
@@ -56,6 +57,9 @@ targets:
       path: mssh/Info.plist
       properties:
         CFBundleDisplayName: SwiftSSH
+        CFBundleLocalizations:
+          - en
+          - zh-Hans
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -87,6 +91,18 @@ targets:
     dependencies:
       - target: SwiftSSH
 
+  SwiftSSHUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - SwiftSSHUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.swiftssh.uitests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: SwiftSSH
+
 schemes:
   SwiftSSH:
     build:
@@ -99,3 +115,4 @@ schemes:
       gatherCoverageData: true
       targets:
         - SwiftSSHTests
+        - SwiftSSHUITests

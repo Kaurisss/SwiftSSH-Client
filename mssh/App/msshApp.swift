@@ -9,6 +9,7 @@ struct msshApp: App {
     @AppStorage("biometricEnabled") private var biometricEnabled = false
     @AppStorage("lockOnBackground") private var lockOnBackground = true
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("appAppearance") private var appearance = AppAppearance.system.rawValue
     @State private var isLocked = false
     @State private var modelContainer: ModelContainer?
     @State private var storageError: String?
@@ -18,7 +19,6 @@ struct msshApp: App {
             UserDefaults.standard.bool(forKey: "biometricEnabled")
                 && BiometricService.canUseBiometrics()
         )
-        configureAppearance()
     }
 
     var body: some Scene {
@@ -40,6 +40,8 @@ struct msshApp: App {
                 }
             }
             .environment(sessionManager)
+            .preferredColorScheme((AppAppearance(rawValue: appearance) ?? .system).colorScheme)
+            .tint(AppColors.accent)
             .task {
                 if modelContainer == nil && storageError == nil {
                     openStore()
@@ -89,30 +91,5 @@ struct msshApp: App {
         } catch {
             storageError = error.localizedDescription
         }
-    }
-
-    private func configureAppearance() {
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.14, alpha: 1)
-        appearance.titleTextAttributes = [
-            .foregroundColor: UIColor(red: 0.93, green: 0.93, blue: 0.95, alpha: 1),
-            .font: UIFont.monospacedSystemFont(ofSize: 16, weight: .semibold)
-        ]
-        appearance.largeTitleTextAttributes = [
-            .foregroundColor: UIColor(red: 0.93, green: 0.93, blue: 0.95, alpha: 1),
-            .font: UIFont.monospacedSystemFont(ofSize: 32, weight: .bold)
-        ]
-        appearance.shadowColor = UIColor.white.withAlphaComponent(0.05)
-        UINavigationBar.appearance().standardAppearance = appearance
-        UINavigationBar.appearance().compactAppearance = appearance
-        UINavigationBar.appearance().scrollEdgeAppearance = appearance
-        UINavigationBar.appearance().tintColor = UIColor(red: 0.30, green: 0.85, blue: 0.85, alpha: 1)
-
-        let tabs = UITabBarAppearance()
-        tabs.configureWithOpaqueBackground()
-        tabs.backgroundColor = appearance.backgroundColor
-        UITabBar.appearance().standardAppearance = tabs
-        UITabBar.appearance().scrollEdgeAppearance = tabs
     }
 }

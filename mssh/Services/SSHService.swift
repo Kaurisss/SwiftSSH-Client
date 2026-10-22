@@ -133,7 +133,7 @@ enum SSHConnectionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .timeout(let seconds):
-            return "Connection timed out after \(seconds)s. Check the host address and your network."
+            return String(localized: "Connection timed out after \(seconds)s. Check the host address and your network.")
         }
     }
 }
@@ -151,8 +151,8 @@ enum KeyParseError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedFormat(let count, let hint):
-            let headerLine = hint.map { " Detected header: \($0)." } ?? ""
-            return "Could not parse the private key (\(count) bytes).\(headerLine) RSA keys must be in OpenSSH format — convert on your Mac with: ssh-keygen -p -N \"\" -o -f <keyfile>"
+            let headerLine = hint.map { String(localized: " Detected header: \($0).") } ?? ""
+            return String(localized: "Could not parse the private key (\(count) bytes).\(headerLine) RSA keys must be in OpenSSH format — convert on your Mac with: ssh-keygen -p -N \"\" -o -f <keyfile>")
         }
     }
 }

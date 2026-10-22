@@ -381,12 +381,12 @@ private enum SessionBannerInfo {
     static func shouldShow(for session: SessionViewModel) -> Bool {
         if session.isConnected { return false }
         let s = session.statusMessage
-        return !s.isEmpty && s != "Disconnected"
+        return !s.isEmpty && s != String(localized: "Disconnected")
     }
 
     static func isLoading(for session: SessionViewModel) -> Bool {
         !session.isConnected
-            && (session.statusMessage == "Connecting..."
-                || session.statusMessage == "Opening terminal...")
+            && (session.statusMessage == String(localized: "Connecting...")
+                || session.statusMessage == String(localized: "Opening terminal..."))
     }
 }

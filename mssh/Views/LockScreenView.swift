@@ -8,9 +8,9 @@ struct LockScreenView: View {
 
     private var biometricLabel: String {
         switch BiometricService.biometricType() {
-        case .faceID: return "Unlock with Face ID"
-        case .touchID: return "Unlock with Touch ID"
-        case .none: return "Unlock"
+        case .faceID: return String(localized: "Unlock with Face ID")
+        case .touchID: return String(localized: "Unlock with Touch ID")
+        case .none: return String(localized: "Unlock")
         }
     }
 
@@ -98,7 +98,7 @@ struct LockScreenView: View {
 
         Task {
             let success = await BiometricService.authenticate(
-                reason: "Authenticate to access your SSH connections"
+                reason: String(localized: "Authenticate to access your SSH connections")
             )
             await MainActor.run {
                 isAuthenticating = false

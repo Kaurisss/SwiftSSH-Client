@@ -12,7 +12,7 @@ final class SessionViewModel: Identifiable {
 
     var title: String
     var isConnected: Bool = false
-    var statusMessage: String = "Disconnected"
+    var statusMessage: String = String(localized: "Disconnected")
 
     /// When non-nil, the UI should present the host key prompt overlay.
     var pendingHostKeyPrompt: HostKeyPromptType?
@@ -41,12 +41,12 @@ final class SessionViewModel: Identifiable {
 
     func connect() async {
         guard let modelContainer else {
-            statusMessage = "Internal error: missing model container."
+            statusMessage = String(localized: "Internal error: missing model container.")
             return
         }
 
         connectionAttempts += 1
-        statusMessage = "Connecting..."
+        statusMessage = String(localized: "Connecting...")
 
         let authMethod: SSHAuthMethod
         do {
@@ -55,10 +55,10 @@ final class SessionViewModel: Identifiable {
             // Pre-flight failure (e.g. key not on this device) — never attempt
             // the SSH handshake, otherwise the server's generic
             // "key authentication failed" overwrites our explanation.
-            statusMessage = resolutionError.errorDescription ?? "Authentication unavailable."
+            statusMessage = resolutionError.errorDescription ?? String(localized: "Authentication unavailable.")
             return
         } catch {
-            statusMessage = "Authentication setup failed: \(error.localizedDescription)"
+            statusMessage = String(localized: "Authentication setup failed: \(error.localizedDescription)")
             return
         }
 
@@ -85,16 +85,16 @@ final class SessionViewModel: Identifiable {
             // Start terminal session with default size (will resize on layout)
             bridge.connect(client: client, cols: 80, rows: 24)
         } catch let error as SSHConnectionError {
-            statusMessage = "Connection failed: \(error.localizedDescription)"
+            statusMessage = String(localized: "Connection failed: \(error.localizedDescription)")
         } catch let error as KeyParseError {
             // Surface verbatim — the message already includes the conversion
             // command. No "Connection failed:" prefix, since the failure was
             // before the connection attempt.
-            statusMessage = error.errorDescription ?? "Could not parse private key."
+            statusMessage = error.errorDescription ?? String(localized: "Could not parse private key.")
         } catch {
             // Provide user-friendly error messages
             let friendlyMessage = friendlyErrorMessage(error)
-            statusMessage = "Connection failed: \(friendlyMessage)"
+            statusMessage = String(localized: "Connection failed: \(friendlyMessage)")
         }
     }
 
@@ -187,77 +187,77 @@ final class SessionViewModel: Identifiable {
         if debugDesc.contains("sshclienterror") {
             if debugDesc.contains("authentication") || debugDesc.contains("error 4") {
                 if profile.authType == .key {
-                    return "Authentication failed. The server may not accept this key format. Try converting with: ssh-keygen -p -N \"\" -o -f <key>"
+                    return String(localized: "Authentication failed. The server may not accept this key format. Try converting with: ssh-keygen -p -N \"\" -o -f <key>")
                 }
-                return "Authentication failed. Check your username and password."
+                return String(localized: "Authentication failed. Check your username and password.")
             }
             if debugDesc.contains("error 0") {
-                return "SSH handshake failed. The server may use unsupported algorithms."
+                return String(localized: "SSH handshake failed. The server may use unsupported algorithms.")
             }
             if debugDesc.contains("error 1") {
-                return "SSH protocol error during connection to \(profile.host)."
+                return String(localized: "SSH protocol error during connection to \(profile.host).")
             }
             if debugDesc.contains("error 2") || debugDesc.contains("error 3") {
-                return "SSH session could not be established with \(profile.host)."
+                return String(localized: "SSH session could not be established with \(profile.host).")
             }
             // Generic Citadel error fallback
-            return "SSH connection failed. Check that \(profile.host):\(profile.port) is reachable and credentials are correct."
+            return String(localized: "SSH connection failed. Check that \(profile.host):\(profile.port) is reachable and credentials are correct.")
         }
 
         // NIO/SSH precondition or buffer overflow (Citadel .all bug)
         if debugDesc.contains("precondition") || debugDesc.contains("buffer") || debugDesc.contains("bytebuffer") {
-            return "Internal SSH protocol error. Please try reconnecting."
+            return String(localized: "Internal SSH protocol error. Please try reconnecting.")
         }
 
         // Network errors
         if desc.contains("could not connect") || desc.contains("network is unreachable") {
-            return "Cannot reach \(profile.host). Check your internet connection."
+            return String(localized: "Cannot reach \(profile.host). Check your internet connection.")
         }
         if desc.contains("connection refused") {
-            return "Connection refused by \(profile.host):\(profile.port). Verify the port is correct and SSH is running."
+            return String(localized: "Connection refused by \(profile.host):\(profile.port). Verify the port is correct and SSH is running.")
         }
         if desc.contains("timed out") || desc.contains("timeout") {
-            return "Connection timed out. The host may be down or blocked by a firewall."
+            return String(localized: "Connection timed out. The host may be down or blocked by a firewall.")
         }
         if desc.contains("no route to host") {
-            return "No route to \(profile.host). Check the hostname or IP address."
+            return String(localized: "No route to \(profile.host). Check the hostname or IP address.")
         }
         if desc.contains("name or service not known") || desc.contains("nodename nor servname") {
-            return "Cannot resolve \(profile.host). Check the hostname."
+            return String(localized: "Cannot resolve \(profile.host). Check the hostname.")
         }
 
         // SSH-specific errors
         if desc.contains("authentication") || desc.contains("auth")
             || debugDesc.contains("authentication") || debugDesc.contains("auth") {
             if profile.authType == .key {
-                return "Key authentication failed. The server may not accept this key, or the key format is unsupported."
+                return String(localized: "Key authentication failed. The server may not accept this key, or the key format is unsupported.")
             }
-            return "Authentication failed. Check your password."
+            return String(localized: "Authentication failed. Check your password.")
         }
         if desc.contains("algorithm") || desc.contains("negotiation") || desc.contains("kex")
             || debugDesc.contains("algorithm") || debugDesc.contains("negotiation") || debugDesc.contains("kex") {
-            return "Encryption negotiation failed. The server may use algorithms not supported by this client."
+            return String(localized: "Encryption negotiation failed. The server may use algorithms not supported by this client.")
         }
         if desc.contains("host key") || desc.contains("rejected") {
-            return "Host key verification failed."
+            return String(localized: "Host key verification failed.")
         }
         if desc.contains("channel") || debugDesc.contains("channelopen") {
-            return "Server rejected the session request."
+            return String(localized: "Server rejected the session request.")
         }
         if desc.contains("banner") || desc.contains("protocol") || desc.contains("version") {
-            return "Not an SSH server, or incompatible SSH protocol version."
+            return String(localized: "Not an SSH server, or incompatible SSH protocol version.")
         }
 
         // iOS-specific network issues
         if desc.contains("posix") || desc.contains("errno")
             || debugDesc.contains("posix") || debugDesc.contains("errno") {
-            return "Network error connecting to \(profile.host):\(profile.port)."
+            return String(localized: "Network error connecting to \(profile.host):\(profile.port).")
         }
 
         // Last resort: if the localizedDescription is unhelpful (e.g. "The operation couldn't be completed")
         // use the debug description which typically has more detail
         if desc.contains("operation couldn") || desc.count < 20 {
-            return "Connection to \(profile.host) failed. Verify the host, port, and credentials."
+            return String(localized: "Connection to \(profile.host) failed. Verify the host, port, and credentials.")
         }
 
         return error.localizedDescription
@@ -276,7 +276,7 @@ enum AuthResolutionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .keyMissingOnDevice(let label):
-            return "Connection failed: the SSH key for \"\(label)\" isn't on this device. Open the Keys tab to import the matching private key, then re-open this connection."
+            return String(localized: "Connection failed: the SSH key for \"\(label)\" isn't on this device. Open the Keys tab to import the matching private key, then re-open this connection.")
         }
     }
 }

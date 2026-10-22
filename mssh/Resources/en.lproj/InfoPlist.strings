@@ -1,0 +1,2 @@
+"NSFaceIDUsageDescription" = "SwiftSSH uses Face ID to protect your SSH connections and keys.";
+"NSLocalNetworkUsageDescription" = "SwiftSSH connects to SSH servers on your local network.";

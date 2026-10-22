@@ -12,29 +12,12 @@ struct SFTPFileItem: Identifiable, Sendable {
 
     var formattedSize: String {
         guard let size else { return "--" }
-        if size < 1024 {
-            return "\(size) B"
-        } else if size < 1024 * 1024 {
-            return String(format: "%.1f KB", Double(size) / 1024)
-        } else if size < 1024 * 1024 * 1024 {
-            return String(format: "%.1f MB", Double(size) / (1024 * 1024))
-        } else {
-            return String(format: "%.2f GB", Double(size) / (1024 * 1024 * 1024))
-        }
+        return ByteCountFormatter.string(fromByteCount: Int64(clamping: size), countStyle: .file)
     }
 
     var formattedDate: String {
         guard let modifiedDate else { return "--" }
-        let formatter = DateFormatter()
-        let calendar = Calendar.current
-        if calendar.isDateInToday(modifiedDate) {
-            formatter.dateFormat = "HH:mm"
-        } else if calendar.isDate(modifiedDate, equalTo: Date(), toGranularity: .year) {
-            formatter.dateFormat = "MMM d HH:mm"
-        } else {
-            formatter.dateFormat = "MMM d, yyyy"
-        }
-        return formatter.string(from: modifiedDate)
+        return modifiedDate.formatted(date: .abbreviated, time: .shortened)
     }
 
     var formattedPermissions: String {

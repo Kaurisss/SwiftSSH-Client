@@ -227,7 +227,7 @@ struct ConnectionFormView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
-            .navigationTitle(existingProfile == nil ? "New Connection" : "Edit Connection")
+            .navigationTitle(existingProfile == nil ? String(localized: "New Connection") : String(localized: "Edit Connection"))
             .iOSOnlyNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -311,8 +311,8 @@ struct ConnectionFormView: View {
     }
 
     private func formField(_ title: String, text: Binding<String>, placeholder: String = "", keyboard: Any? = nil, autocap: Bool = true) -> some View {
-        TextField(title, text: text, prompt: Text(placeholder).foregroundStyle(AppColors.textTertiary))
-            .font(.system(.body, design: .monospaced))
+        TextField(LocalizedStringKey(title), text: text, prompt: Text(LocalizedStringKey(placeholder)))
+            .font(.body)
             .iOSOnlyTextInputAutocapitalization(autocap)
             .autocorrectionDisabled()
             .iOSOnlyKeyboardType(keyboard)
@@ -326,7 +326,7 @@ struct ConnectionFormView: View {
         if let p = Int(port) {
             portValidationError = (p < 1 || p > 65535) ? "1-65535" : nil
         } else {
-            portValidationError = "Invalid"
+            portValidationError = String(localized: "Invalid")
         }
     }
 
@@ -353,7 +353,7 @@ struct ConnectionFormView: View {
     private static func probeTCP(host: String, port: Int, timeout: TimeInterval) async -> ConnectionTestResult {
         await withCheckedContinuation { (continuation: CheckedContinuation<ConnectionTestResult, Never>) in
             guard let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
-                continuation.resume(returning: ConnectionTestResult(success: false, message: "Invalid port \(port)"))
+                continuation.resume(returning: ConnectionTestResult(success: false, message: String(localized: "Invalid port \(port)")))
                 return
             }
 
@@ -380,24 +380,24 @@ struct ConnectionFormView: View {
                         let trimmed = banner.trimmingCharacters(in: .whitespacesAndNewlines)
                         if trimmed.hasPrefix("SSH-") {
                             let summary = trimmed.split(separator: "\n").first.map(String.init) ?? trimmed
-                            finish(ConnectionTestResult(success: true, message: "SSH server: \(summary)"))
+                            finish(ConnectionTestResult(success: true, message: String(localized: "SSH server: \(summary)")))
                         } else if !banner.isEmpty {
-                            finish(ConnectionTestResult(success: true, message: "Port \(port) reachable (no SSH banner)"))
+                            finish(ConnectionTestResult(success: true, message: String(localized: "Port \(port) reachable (no SSH banner)")))
                         } else {
-                            finish(ConnectionTestResult(success: true, message: "Port \(port) reachable"))
+                            finish(ConnectionTestResult(success: true, message: String(localized: "Port \(port) reachable")))
                         }
                     }
                 case .failed(let error):
                     let desc = "\(error)".lowercased()
                     let msg: String
                     if desc.contains("refused") {
-                        msg = "Connection refused — \(port) is closed on \(host)"
+                        msg = String(localized: "Connection refused — \(port) is closed on \(host)")
                     } else if desc.contains("nodename") || desc.contains("not known") || desc.contains("hostnotfound") {
-                        msg = "Cannot resolve host \(host)"
+                        msg = String(localized: "Cannot resolve host \(host)")
                     } else if desc.contains("network is unreachable") || desc.contains("no route") {
-                        msg = "No network route to \(host)"
+                        msg = String(localized: "No network route to \(host)")
                     } else {
-                        msg = "Cannot reach \(host):\(port)"
+                        msg = String(localized: "Cannot reach \(host):\(port)")
                     }
                     finish(ConnectionTestResult(success: false, message: msg))
                 case .cancelled:
@@ -410,7 +410,7 @@ struct ConnectionFormView: View {
             conn.start(queue: queue)
 
             queue.asyncAfter(deadline: .now() + timeout) {
-                finish(ConnectionTestResult(success: false, message: "Timed out after \(Int(timeout))s — host may be blocked by a firewall"))
+                finish(ConnectionTestResult(success: false, message: String(localized: "Timed out after \(Int(timeout))s — host may be blocked by a firewall")))
             }
         }
     }

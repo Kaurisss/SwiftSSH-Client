@@ -61,7 +61,7 @@ final class SFTPViewModel {
             pathHistory = [home]
             try await loadFiles()
         } catch {
-            self.error = "Failed to resolve home: \(error.localizedDescription)"
+            self.error = String(localized: "Failed to resolve home: \(error.localizedDescription)")
         }
         isLoading = false
     }
@@ -100,7 +100,7 @@ final class SFTPViewModel {
         do {
             try await loadFiles()
         } catch {
-            self.error = "Failed to list directory: \(error.localizedDescription)"
+            self.error = String(localized: "Failed to list directory: \(error.localizedDescription)")
         }
         isLoading = false
     }
@@ -121,7 +121,7 @@ final class SFTPViewModel {
             try await sftpService.downloadFile(remotePath: item.path, localURL: localURL)
             transferProgress = 1.0
         } catch {
-            self.error = "Download failed: \(error.localizedDescription)"
+            self.error = String(localized: "Download failed: \(error.localizedDescription)")
         }
 
         // Brief delay so user sees completion
@@ -153,7 +153,7 @@ final class SFTPViewModel {
             isTransferring = false
             await refresh()
         } catch {
-            self.error = "Upload failed: \(error.localizedDescription)"
+            self.error = String(localized: "Upload failed: \(error.localizedDescription)")
             isTransferring = false
         }
     }
@@ -167,7 +167,7 @@ final class SFTPViewModel {
             }
             await refresh()
         } catch {
-            self.error = "Delete failed: \(error.localizedDescription)"
+            self.error = String(localized: "Delete failed: \(error.localizedDescription)")
         }
     }
 
@@ -185,7 +185,7 @@ final class SFTPViewModel {
             newFolderName = ""
             await refresh()
         } catch {
-            self.error = "Create folder failed: \(error.localizedDescription)"
+            self.error = String(localized: "Create folder failed: \(error.localizedDescription)")
         }
     }
 

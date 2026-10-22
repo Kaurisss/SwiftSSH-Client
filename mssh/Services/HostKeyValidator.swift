@@ -93,63 +93,39 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
         )
         let matches = try context.fetch(descriptor)
 
-        if let existing = matches.first {
-            // We have a stored key for this host
-            if existing.publicKeyData == presentedKeyData {
-                // Key matches -- TOFU success, update last-seen
-                existing.lastSeenAt = Date()
-                try context.save()
-                return .accept
-            } else {
-                guard let promptHandler else {
-                    throw HostKeyApprovalRequired(keyData: presentedKeyData,
-                        fingerprint: presentedFingerprint, keyType: keyType)
-                }
-                // KEY CHANGED -- ask the user
-                let oldFingerprint = existing.fingerprintSHA256
-                let decision = await promptHandler(
-                    .changedKey(
-                        oldFingerprint: oldFingerprint,
-                        newFingerprint: presentedFingerprint,
-                        keyType: keyType
-                    )
-                )
-                if decision == .accept {
-                    existing.publicKeyData = presentedKeyData
-                    existing.fingerprintSHA256 = presentedFingerprint
-                    existing.keyTypeDescription = keyType
-                    existing.lastSeenAt = Date()
-                    try context.save()
-
-                    // Also update Keychain copy
-                    try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
-                }
-                return decision
-            }
-        } else {
-            guard let promptHandler else {
-                throw HostKeyApprovalRequired(keyData: presentedKeyData,
-                    fingerprint: presentedFingerprint, keyType: keyType)
-            }
-            // First connection to this host -- ask user to accept
-            let decision = await promptHandler(
-                .newHost(fingerprint: presentedFingerprint, keyType: keyType)
-            )
-            if decision == .accept {
-                let knownHost = KnownHost(
-                    host: host,
-                    port: port,
-                    keyTypeDescription: keyType,
-                    fingerprintSHA256: presentedFingerprint,
-                    publicKeyData: presentedKeyData
-                )
-                context.insert(knownHost)
-                try context.save()
-
-                try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
-            }
-            return decision
+        if let existing = matches.first, existing.publicKeyData == presentedKeyData {
+            existing.lastSeenAt = Date()
+            try context.save()
+            return .accept
         }
+        guard let promptHandler else {
+            throw HostKeyApprovalRequired(keyData: presentedKeyData,
+                fingerprint: presentedFingerprint, keyType: keyType)
+        }
+        let prompt: HostKeyPromptType
+        if let existing = matches.first {
+            prompt = .changedKey(oldFingerprint: existing.fingerprintSHA256,
+                newFingerprint: presentedFingerprint, keyType: keyType)
+        } else {
+            prompt = .newHost(fingerprint: presentedFingerprint, keyType: keyType)
+        }
+        let decision = await promptHandler(prompt)
+        guard decision == .accept else { return decision }
+
+        // Another window may have trusted this host while this prompt was open.
+        let saveContext = ModelContext(container)
+        if let existing = try saveContext.fetch(descriptor).first {
+            existing.publicKeyData = presentedKeyData
+            existing.fingerprintSHA256 = presentedFingerprint
+            existing.keyTypeDescription = keyType
+            existing.lastSeenAt = Date()
+        } else {
+            saveContext.insert(KnownHost(host: host, port: port, keyTypeDescription: keyType,
+                fingerprintSHA256: presentedFingerprint, publicKeyData: presentedKeyData))
+        }
+        try saveContext.save()
+        try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
+        return decision
     }
 
     // MARK: - Helpers

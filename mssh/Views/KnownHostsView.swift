@@ -20,11 +20,6 @@ struct KnownHostsView: View {
                     Text("No Known Hosts")
                         .font(AppFonts.subheading)
                         .foregroundStyle(AppColors.textSecondary)
-                    Text("Host keys appear after your first connection")
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
                     Spacer()
                 }
             } else {
@@ -91,7 +86,7 @@ private struct KnownHostRow: View {
                     .font(.system(.subheadline, design: .monospaced).weight(.medium))
                     .foregroundStyle(AppColors.textPrimary)
                 if host.port != 22 {
-                    Text(":\(host.port)")
+                    Text(verbatim: ":\(host.port)")
                         .font(.system(.subheadline, design: .monospaced))
                         .foregroundStyle(AppColors.textSecondary)
                 }
@@ -111,12 +106,6 @@ private struct KnownHostRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            HStack(spacing: AppSpacing.md) {
-                Text("First: \(host.firstSeenAt.formatted(.relative(presentation: .named)))")
-                Text("Last: \(host.lastSeenAt.formatted(.relative(presentation: .named)))")
-            }
-            .font(.system(size: 10))
-            .foregroundStyle(AppColors.textTertiary)
         }
         .appCard()
     }

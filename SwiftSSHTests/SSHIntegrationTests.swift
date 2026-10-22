@@ -286,6 +286,31 @@ final class SSHIntegrationTests: XCTestCase {
         let hostFingerprint: String
     }
 
+    func testTwoPendingHostApprovalsPersistOnlyOneKnownHost() async throws {
+        let container = try makeContainer()
+        let entered = expectation(description: "Both windows request trust before either decision")
+        entered.expectedFulfillmentCount = 2
+        let firstGate = HostKeyGate(entered: entered)
+        let secondGate = HostKeyGate(entered: entered)
+        let host = "trust-\(UUID().uuidString).invalid"
+        defer { KeychainService.deleteItem(account: "hostkey-\(host):22") }
+        func approve(using gate: HostKeyGate) async throws -> HostKeyPromptResult {
+            try await TOFUHostKeyValidator.evaluate(host: host, port: 22,
+                presentedKeyData: Data("same-public-key".utf8), presentedFingerprint: "SHA256:fixture",
+                keyType: "ssh-ed25519", container: container, promptHandler: { _ in await gate.wait() })
+        }
+        let first = Task { try await approve(using: firstGate) }
+        let second = Task { try await approve(using: secondGate) }
+        await fulfillment(of: [entered], timeout: 5)
+        await firstGate.accept()
+        let firstDecision = try await first.value
+        XCTAssertTrue(firstDecision == .accept)
+        await secondGate.accept()
+        let secondDecision = try await second.value
+        XCTAssertTrue(secondDecision == .accept)
+        XCTAssertEqual(try ModelContext(container).fetchCount(FetchDescriptor<KnownHost>()), 1)
+    }
+
     private func loadFixture() throws -> Fixture {
         guard let url = Bundle(for: Self.self).url(forResource: "ssh-integration", withExtension: "json") else {
             throw XCTSkip("Run the isolated SSH fixture setup from the CI workflow to enable loopback integration tests.")

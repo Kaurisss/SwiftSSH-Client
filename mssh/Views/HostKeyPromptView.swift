@@ -26,6 +26,8 @@ struct HostKeyPromptView: View {
         )
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
         .padding(AppSpacing.xl)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 
     private var isWarning: Bool {

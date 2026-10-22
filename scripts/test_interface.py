@@ -1,5 +1,6 @@
 """Validate localization resources and guard the reported appearance regressions."""
 import json
+import plistlib
 from pathlib import Path
 import re
 import unittest
@@ -43,6 +44,19 @@ class InterfaceTests(unittest.TestCase):
         for file in ('KeyManagerView.swift', 'KnownHostsView.swift'):
             code = (ROOT / 'mssh/Views' / file).read_text(encoding='utf-8')
             self.assertIn('.frame(maxWidth: .infinity, maxHeight: .infinity)', code)
+
+    def test_keychain_entitlements_are_simulator_only(self):
+        entitlements = plistlib.loads((ROOT / 'mssh/Simulator.entitlements').read_bytes())
+        self.assertEqual(entitlements['application-identifier'], 'local.com.example.swiftssh')
+        self.assertEqual(entitlements['keychain-access-groups'], ['local.com.example.swiftssh'])
+        spec = (ROOT / 'project.yml').read_text(encoding='utf-8')
+        self.assertIn('"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": mssh/Simulator.entitlements', spec)
+        workflow = (ROOT / '.github/workflows/unsigned-ipa.yml').read_text(encoding='utf-8')
+        simulator, archive = workflow.split('      - name: Archive without signing', 1)
+        self.assertIn('CODE_SIGN_IDENTITY="-"', simulator)
+        self.assertIn('CODE_SIGNING_ALLOWED=YES', simulator)
+        self.assertIn('CODE_SIGNING_ALLOWED=NO', archive)
+        self.assertIn('CODE_SIGN_IDENTITY=""', archive)
 
     def test_localized_connection_status_comparisons(self):
         for file in ('TerminalSessionView.swift', 'SplitTerminalView.swift'):

@@ -68,7 +68,8 @@ xcrun simctl list devices available
 DESTINATION='platform=iOS Simulator,name=iPhone 16' bash build.sh
 ```
 
-脚本会重新生成工程并执行 `SwiftSSHTests`，任一步失败即返回失败。
+脚本会重新生成工程并执行单元测试和 UI 测试，任一步失败即返回失败。
+模拟器使用无需证书的本地 ad-hoc 签名及模拟器专用钥匙串权限；设备归档仍关闭签名。
 测试使用独立临时目录和随机 Keychain 账户，覆盖：
 - 本地数据库写入后重新打开。
 - 损坏数据库报错时保留原文件及相邻数据库。

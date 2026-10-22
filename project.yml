@@ -32,6 +32,7 @@ targets:
           - Info-macOS.plist
           - mssh-mac.entitlements
           - mssh.xcconfig
+          - Simulator.entitlements
           - Configuration.storekit
           - Services/AutoImportService.swift
           - Services/ConnectionSyncBridge.swift
@@ -50,6 +51,7 @@ targets:
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "2"
         TARGETED_DEVICE_FAMILY: "1,2"
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": mssh/Simulator.entitlements
     dependencies:
       - package: SwiftTerm
       - package: Citadel

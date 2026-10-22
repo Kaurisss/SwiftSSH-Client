@@ -14,4 +14,7 @@ xcodebuild test \
     -project SwiftSSH.xcodeproj \
     -scheme SwiftSSH \
     -destination "${DESTINATION:-platform=iOS Simulator,name=iPhone 16}" \
-    CODE_SIGNING_ALLOWED=NO
+    CODE_SIGNING_ALLOWED=YES \
+    CODE_SIGN_IDENTITY="-" \
+    CODE_SIGN_STYLE=Manual \
+    DEVELOPMENT_TEAM=""

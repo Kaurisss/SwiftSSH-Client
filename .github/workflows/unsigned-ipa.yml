@@ -45,7 +45,10 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
             -resultBundlePath "$PWD/build/UITests.xcresult" \
             -derivedDataPath "$PWD/build/SimulatorData" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
             2>&1 | tee build/tests.log
           xcrun xcresulttool export attachments \
             --path build/UITests.xcresult --output-path build/ui-screenshots

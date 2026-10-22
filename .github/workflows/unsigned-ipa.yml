@@ -32,6 +32,7 @@ jobs:
       - name: Check configuration and generate project
         run: |
           python3 scripts/check_baseline.py
+          python3 -m unittest discover -s project/scripts -p test_local_sign_install.py -v
           xcodegen generate
 
       - name: Archive without signing

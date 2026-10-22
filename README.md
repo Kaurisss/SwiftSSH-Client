@@ -29,6 +29,9 @@
 私有仓库构建会使用账户的 GitHub Actions 额度。
 
 unsigned IPA 需自行签名后才能安装到常规 iPhone / iPad。
+Windows 用户可用 [project/初始化.cmd](project/初始化.cmd) 配置本地证书，
+再运行 [project/一键签名安装.cmd](project/一键签名安装.cmd) 自动下载、签名和安装，
+详见 [SIGNING.md](project/SIGNING.md)。本地流程不需要 WSL 或 xtool。
 此工作流只做设备端 Release 构建，不运行模拟器 XCTest；测试命令见下文。
 
 ## 在 Mac 上运行

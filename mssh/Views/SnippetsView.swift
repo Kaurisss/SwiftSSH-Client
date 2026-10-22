@@ -70,18 +70,16 @@ struct SnippetsView: View {
                 .accessibilityIdentifier("snippet-add")
             }
         }
-        .confirmationDialog("Delete \(snippetToDelete?.displayLabel ?? "")?", isPresented: .init(
+        .alert("Delete \(snippetToDelete?.displayLabel ?? "")?", isPresented: .init(
             get: { snippetToDelete != nil }, set: { if !$0 { snippetToDelete = nil } }
-        ), titleVisibility: .visible) {
+        ), presenting: snippetToDelete) { snippet in
             Button("Delete", role: .destructive) {
-                if let snippetToDelete {
-                    modelContext.delete(snippetToDelete)
-                    try? modelContext.save()
-                }
+                modelContext.delete(snippet)
+                try? modelContext.save()
                 snippetToDelete = nil
             }
             Button("Cancel", role: .cancel) { snippetToDelete = nil }
-        }
+        } message: { _ in EmptyView() }
         .sheet(isPresented: $showCreateSheet) {
             SnippetEditorView(snippet: nil)
         }

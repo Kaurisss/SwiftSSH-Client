@@ -13,6 +13,7 @@ final class SessionViewModel: Identifiable {
     var title: String
     var isConnected: Bool = false
     var statusMessage: String = String(localized: "Disconnected")
+    private(set) var connectedAt: Date?
 
     /// When non-nil, the UI should present the host key prompt overlay.
     var pendingHostKeyPrompt: HostKeyPromptType?
@@ -34,12 +35,17 @@ final class SessionViewModel: Identifiable {
         self.profile = profile
         self.title = profile.label
         bridge.onStateChange = { [weak self] connected, status in
-            self?.isConnected = connected
-            self?.statusMessage = status
+            guard let self else { return }
+            if connected && self.connectedAt == nil { self.connectedAt = Date() }
+            if !connected { self.connectedAt = nil }
+            self.isConnected = connected
+            self.statusMessage = status
         }
     }
 
     func connect() async {
+        guard !isConnected, statusMessage != String(localized: "Connecting..."),
+              statusMessage != String(localized: "Opening terminal...") else { return }
         guard let modelContainer else {
             statusMessage = String(localized: "Internal error: missing model container.")
             return

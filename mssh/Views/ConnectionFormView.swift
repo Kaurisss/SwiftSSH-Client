@@ -37,6 +37,15 @@ struct ConnectionFormView: View {
     init(existingProfile: ConnectionProfile? = nil) {
         self.existingProfile = existingProfile
         onConnect = nil
+        _label = State(initialValue: existingProfile?.label ?? "")
+        _host = State(initialValue: existingProfile?.host ?? "")
+        _port = State(initialValue: String(existingProfile?.port ?? 22))
+        _username = State(initialValue: existingProfile?.username ?? "root")
+        _authType = State(initialValue: existingProfile?.authType ?? .password)
+        _selectedKeyID = State(initialValue: existingProfile?.keyID)
+        _isFavorite = State(initialValue: existingProfile?.isFavorite ?? false)
+        _groupName = State(initialValue: existingProfile?.groupName ?? "")
+        _colorTag = State(initialValue: existingProfile?.colorTag)
     }
 
     init(target: QuickConnectTarget, onConnect: @escaping (ConnectionProfile) -> Void) {
@@ -158,7 +167,8 @@ struct ConnectionFormView: View {
                                     Button("Clear", role: .destructive) { groupName = "" }
                                 }
                             } label: {
-                                Image(systemName: "chevron.down.circle")
+                                Label("Choose Group", systemImage: "chevron.down.circle")
+                                    .labelStyle(.iconOnly)
                                     .foregroundStyle(AppColors.textSecondary)
                             }
                         }
@@ -169,7 +179,7 @@ struct ConnectionFormView: View {
                             .foregroundStyle(AppColors.accent)
                         Text("Color Tag")
                         Spacer()
-                        ScrollView(.horizontal, showsIndicators: false) {
+                        ScrollView(.horizontal) {
                             HStack(spacing: 8) {
                                 tagSwatch(name: nil, isSelected: colorTag == nil)
                                 ForEach(ConnectionProfile.tagPalette, id: \.self) { name in
@@ -215,29 +225,7 @@ struct ConnectionFormView: View {
                     }
                 }
 
-                // Preview
-                if !host.isEmpty && !username.isEmpty {
-                    Section("Preview") {
-                        let effectiveLabel = label.isEmpty ? "\(username)@\(host)" : label
-                        HStack(spacing: AppSpacing.md) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(AppColors.accentDim)
-                                    .frame(width: 36, height: 36)
-                                Image(systemName: "server.rack")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(AppColors.accent)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(effectiveLabel)
-                                    .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                                Text("\(username)@\(host):\(port)")
-                                    .font(AppFonts.monoCaption)
-                                    .foregroundStyle(AppColors.textSecondary)
-                            }
-                        }
-                    }
-                }
+
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
@@ -262,30 +250,10 @@ struct ConnectionFormView: View {
                 Button("Close", role: .cancel) { saveError = nil }
             } message: { Text(saveError ?? "") }
             .onAppear {
-                if let p = existingProfile {
-                    label = p.label
-                    host = p.host
-                    port = String(p.port)
-                    username = p.username
-                    authType = p.authType
-                    // Picker tags are SSHKey.syncID. Older profiles stored
-                    // the device-specific keychainID — convert to syncID so
-                    // the picker preselects correctly. Save() will then
-                    // persist the syncID and the legacy value vanishes.
-                    if let stored = p.keyID, !stored.isEmpty {
-                        if keys.contains(where: { $0.syncID == stored }) {
-                            selectedKeyID = stored
-                        } else if let match = keys.first(where: { $0.keychainID == stored }) {
-                            selectedKeyID = match.syncID
-                        } else {
-                            selectedKeyID = stored
-                        }
-                    } else {
-                        selectedKeyID = nil
-                    }
-                    isFavorite = p.isFavorite
-                    groupName = p.groupName ?? ""
-                    colorTag = p.colorTag
+                if let stored = selectedKeyID,
+                   !keys.contains(where: { $0.syncID == stored }),
+                   let match = keys.first(where: { $0.keychainID == stored }) {
+                    selectedKeyID = match.syncID
                 }
             }
         }
@@ -327,6 +295,9 @@ struct ConnectionFormView: View {
             }
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .accessibilityLabel(Text(LocalizedStringKey(name?.capitalized ?? "No Color")))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func formField(_ title: String, text: Binding<String>, placeholder: String = "", keyboard: Any? = nil, autocap: Bool = true) -> some View {

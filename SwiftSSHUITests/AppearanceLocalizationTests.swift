@@ -180,6 +180,19 @@ final class AppearanceLocalizationTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyTerminalConnectActionReturnsToHosts() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["终端"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["终端"].tap()
+        XCTAssertTrue(app.staticTexts["暂无活动会话"].waitForExistence(timeout: 5))
+        app.buttons["连接"].tap()
+        XCTAssertTrue(app.textFields["quick-connect"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

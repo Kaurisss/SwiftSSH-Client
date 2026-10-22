@@ -8,6 +8,8 @@ struct SplitSessionTabView: View {
     @State private var splitSession: SessionViewModel?
     @State private var splitDirection: SplitDirection = .leftRight
     @State private var focusedPane: Pane = .primary
+    @State private var fileBrowser: SFTPBrowserView.Connection?
+    @State private var snippetSession: SessionViewModel?
 
     enum SplitDirection {
         case leftRight   // side by side
@@ -20,6 +22,9 @@ struct SplitSessionTabView: View {
     }
 
     private var isSplit: Bool { splitSession != nil }
+    private var focusedSession: SessionViewModel? {
+        focusedPane == .secondary ? splitSession : sessionManager.activeSession
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,6 +47,28 @@ struct SplitSessionTabView: View {
             }
         }
         .onAppear { injectModelContainer() }
+        .sheet(item: $fileBrowser) { connection in
+            SFTPBrowserView(client: connection.client)
+        }
+        .sheet(item: $snippetSession) { session in
+            SnippetPickerView { snippet in
+                guard session.isConnected else { return }
+                session.bridge.sendToSSH(data: ArraySlice(snippet.command.utf8))
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openSnippetPicker)) { _ in
+            if isSplit, let session = focusedSession, session.isConnected { snippetSession = session }
+        }
+        .onChange(of: sessionManager.sessions.map(\.id)) { _, identifiers in
+            if let splitSession, !identifiers.contains(splitSession.id) {
+                self.splitSession = nil
+                focusedPane = .primary
+            }
+        }
+        .onChange(of: sessionManager.activeSessionID) { _, _ in
+            splitSession = nil
+            focusedPane = .primary
+        }
     }
 
     // MARK: - Terminal Content
@@ -73,7 +100,7 @@ struct SplitSessionTabView: View {
     private func terminalPane(session: SessionViewModel, pane: Pane) -> some View {
         ZStack {
             AppColors.terminalBg
-            TerminalViewWrapper(bridge: session.bridge)
+            TerminalViewWrapper(bridge: session.bridge, isFocused: focusedPane == pane)
 
             // Focus border
             if focusedPane == pane {
@@ -90,45 +117,21 @@ struct SplitSessionTabView: View {
                     sessionStatusBanner(session: session)
                         .padding(AppSpacing.md)
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if let promptType = session.pendingHostKeyPrompt {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                HostKeyPromptView(promptType: promptType,
+                                  onAccept: { session.acceptHostKey() },
+                                  onReject: { session.rejectHostKey() })
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { focusedPane = pane }
+        .simultaneousGesture(TapGesture().onEnded { focusPane(pane) })
     }
 
     private func singlePane(session: SessionViewModel) -> some View {
-        ZStack {
-            AppColors.terminalBg
-            TerminalViewWrapper(bridge: session.bridge)
-                .ignoresSafeArea(.container, edges: .bottom)
-
-            // Host key prompt
-            if let promptType = session.pendingHostKeyPrompt {
-                Color.black.opacity(0.6).ignoresSafeArea()
-                HostKeyPromptView(
-                    promptType: promptType,
-                    onAccept: { session.acceptHostKey() },
-                    onReject: { session.rejectHostKey() }
-                )
-            }
-
-            // Status banner: visible whenever the session isn't connected and
-            // has anything to say. The earlier strict prefix check missed our
-            // pre-flight errors (KeyParseError / AuthResolutionError) so the
-            // user only saw a blinking cursor with no feedback.
-            if SessionBannerInfo.shouldShow(for: session) {
-                VStack {
-                    Spacer()
-                    sessionStatusBanner(session: session)
-                        .padding(.horizontal, AppSpacing.lg)
-                        .padding(.bottom, AppSpacing.xxl)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: session.statusMessage)
-        .animation(.easeInOut(duration: 0.25), value: session.isConnected)
+        TerminalSessionView(session: session)
     }
 
     /// Inline banner shared by single and split panes — loading style
@@ -212,6 +215,9 @@ struct SplitSessionTabView: View {
                     Label("Split Top / Bottom", systemImage: "rectangle.split.1x2")
                 }
                 if isSplit {
+                    Button("Focus Other Pane", systemImage: "arrow.left.arrow.right") {
+                        focusPane(focusedPane == .primary ? .secondary : .primary)
+                    }
                     Divider()
                     Button {
                         closeSplit()
@@ -220,8 +226,7 @@ struct SplitSessionTabView: View {
                     }
                 }
             } label: {
-                Image(systemName: isSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
-                    .font(.system(size: 14))
+                Label("Split Terminal", systemImage: isSplit ? "rectangle.split.2x1.fill" : "rectangle.split.2x1")
             }
 
             // Claude Code
@@ -249,20 +254,26 @@ struct SplitSessionTabView: View {
                     Label("Claude Code — Split Bottom", systemImage: "rectangle.bottomhalf.inset.filled")
                 }
             } label: {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 14))
+                Label("Claude Code", systemImage: "sparkle")
             }
 
-            // Close session
-            Button {
-                if let id = sessionManager.activeSessionID {
-                    closeSplit()
-                    sessionManager.closeSession(id)
+            if isSplit {
+                Menu {
+                    Button("Snippets", systemImage: "text.badge.plus") { snippetSession = focusedSession }
+                        .disabled(focusedSession?.isConnected != true)
+                    Button("Paste", systemImage: "doc.on.clipboard") {
+                        if let text = AppClipboard.paste(), let session = focusedSession {
+                            session.bridge.sendToSSH(data: ArraySlice(text.utf8))
+                        }
+                    }
+                    .disabled(focusedSession?.isConnected != true)
+                    Button("Files", systemImage: "folder") {
+                        if let client = focusedSession?.sshClient { fileBrowser = .init(client: client) }
+                    }
+                    .disabled(focusedSession?.sshClient == nil || focusedSession?.isConnected != true)
+                } label: {
+                    Label("Session Actions", systemImage: "ellipsis.circle")
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppColors.textSecondary)
             }
         }
     }
@@ -281,14 +292,12 @@ struct SplitSessionTabView: View {
                         isConnected: session.isConnected,
                         isActive: session.id == sessionManager.activeSessionID,
                         onTap: {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                closeSplit()
-                                sessionManager.activeSessionID = session.id
-                            }
+                            splitSession = nil
+                            focusedPane = .primary
+                            sessionManager.activeSessionID = session.id
                         },
                         onClose: {
-                            closeSplit()
-                            sessionManager.closeSession(session.id)
+                            sessionManager.requestCloseSession(session.id)
                         }
                     )
                     .id(session.id)
@@ -297,7 +306,7 @@ struct SplitSessionTabView: View {
             .padding(.horizontal, AppSpacing.sm)
             .padding(.vertical, AppSpacing.xs)
         }
-        .frame(height: 38)
+        .frame(minHeight: 44)
         .background(AppColors.surface)
         .overlay(
             Rectangle().frame(height: 0.5).foregroundStyle(AppColors.border),
@@ -319,6 +328,11 @@ struct SplitSessionTabView: View {
 
     // MARK: - Actions
 
+    private func focusPane(_ pane: Pane) {
+        focusedPane = pane
+        _ = focusedSession?.bridge.terminalView?.becomeFirstResponder()
+    }
+
     private func injectModelContainer() {
         for session in sessionManager.sessions {
             if session.modelContainer == nil {
@@ -330,10 +344,9 @@ struct SplitSessionTabView: View {
     private func performSplit(_ direction: SplitDirection) {
         guard let activeSession = sessionManager.activeSession else { return }
 
-        // Close existing split first
-        if let existing = splitSession {
-            sessionManager.closeSession(existing.id)
-            splitSession = nil
+        if splitSession != nil {
+            splitDirection = direction
+            return
         }
 
         // Create new session for the split pane
@@ -351,14 +364,12 @@ struct SplitSessionTabView: View {
 
     private func closeSplit() {
         if let session = splitSession {
-            sessionManager.closeSession(session.id)
-            splitSession = nil
-            focusedPane = .primary
+            sessionManager.requestCloseSession(session.id)
         }
     }
 
     private func sendClaudeCommand() {
-        guard let session = sessionManager.activeSession, session.isConnected else { return }
+        guard let session = focusedSession, session.isConnected else { return }
         let bytes = Array("claude\n".utf8)
         session.bridge.sendToSSH(data: ArraySlice(bytes))
     }

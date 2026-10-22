@@ -24,7 +24,7 @@ struct ContentView: View {
             }
 
             Tab("Terminal", systemImage: "terminal.fill", value: .terminal) {
-                TerminalTabContent()
+                TerminalTabContent(selectedTab: $selectedTab)
             }
             .badge(sessionManager.sessions.count)
 
@@ -41,6 +41,15 @@ struct ContentView: View {
         }
         .tint(AppColors.accent)
         .appTheme()
+        .alert("Close \(sessionManager.sessionPendingClose?.title ?? "")?", isPresented: .init(
+            get: { sessionManager.sessionPendingClose != nil },
+            set: { if !$0 { sessionManager.sessionPendingClose = nil } }
+        ), presenting: sessionManager.sessionPendingClose) { session in
+            Button("Disconnect", role: .destructive) {
+                sessionManager.closeSession(session.id)
+            }
+            Button("Cancel", role: .cancel) { sessionManager.sessionPendingClose = nil }
+        } message: { _ in EmptyView() }
     }
 }
 
@@ -48,20 +57,16 @@ struct ContentView: View {
 
 private struct TerminalTabContent: View {
     @Environment(SessionManager.self) private var sessionManager
+    @Binding var selectedTab: ContentView.AppTab
 
     var body: some View {
         if sessionManager.sessions.isEmpty {
             NavigationStack {
-                VStack(spacing: AppSpacing.lg) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 40))
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text("No Active Sessions")
-                        .font(AppFonts.subheading)
-                        .foregroundStyle(AppColors.textSecondary)
-                    Text("Connect to a server from the Connections tab")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
+                ContentUnavailableView {
+                    Label("No Active Sessions", systemImage: "terminal")
+                } actions: {
+                    Button("Connect") { selectedTab = .connections }
+                        .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppColors.background)
@@ -124,7 +129,7 @@ private struct iPhoneConnectionsView: View {
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        sessionManager.closeSession(session.id)
+                                        sessionManager.requestCloseSession(session.id)
                                     } label: {
                                         Label("Close", systemImage: "xmark.circle")
                                     }
@@ -526,7 +531,7 @@ private struct iPadConnectionsView: View {
                             .listRowBackground(AppColors.surface)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    sessionManager.closeSession(session.id)
+                                    sessionManager.requestCloseSession(session.id)
                                 } label: {
                                     Label("Close", systemImage: "xmark.circle")
                                 }

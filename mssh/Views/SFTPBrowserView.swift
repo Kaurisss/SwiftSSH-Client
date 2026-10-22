@@ -2,7 +2,12 @@ import SwiftUI
 import Citadel
 
 struct SFTPBrowserView: View {
+    struct Connection: Identifiable {
+        let id = UUID()
+        let client: SSHClient
+    }
     @State private var viewModel: SFTPViewModel
+    @State private var inspectedFile: SFTPFileItem?
     @Environment(\.dismiss) private var dismiss
 
     init(client: SSHClient) {
@@ -70,23 +75,19 @@ struct SFTPBrowserView: View {
             } message: {
                 Text(viewModel.error ?? "")
             }
-            .confirmationDialog(
+            .alert(
                 "Delete \(viewModel.itemToDelete?.name ?? "")?",
                 isPresented: $viewModel.showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
+                presenting: viewModel.itemToDelete
+            ) { item in
                 Button("Delete", role: .destructive) {
-                    if let item = viewModel.itemToDelete {
-                        Task { await viewModel.delete(item: item) }
-                    }
+                    Task { await viewModel.delete(item: item) }
                 }
                 Button("Cancel", role: .cancel) { viewModel.itemToDelete = nil }
-            } message: {
-                if let item = viewModel.itemToDelete {
-                    Text(item.isDirectory
-                         ? String(localized: "This will delete the directory. It must be empty.")
-                         : String(localized: "This file will be permanently deleted."))
-                }
+            } message: { item in
+                Text(item.isDirectory
+                     ? String(localized: "This will delete the directory. It must be empty.")
+                     : String(localized: "This file will be permanently deleted."))
             }
             .fileImporter(isPresented: $viewModel.showFileImporter,
                           allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
@@ -125,6 +126,7 @@ struct SFTPBrowserView: View {
                     }
                 }
             }
+            .sheet(item: $inspectedFile) { item in SFTPFileInfoView(item: item) }
         }
         .interactiveDismissDisabled(viewModel.isBusy)
         .appTheme()
@@ -276,8 +278,8 @@ struct SFTPBrowserView: View {
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(AppColors.textSecondary)
                     }
-                    if item.modifiedDate != nil {
-                        Text(item.formattedDate)
+                    if let modifiedDate = item.modifiedDate {
+                        Text(modifiedDate, format: .dateTime.year().month(.abbreviated).day().hour().minute())
                             .font(.caption)
                             .foregroundStyle(AppColors.textSecondary)
                     }
@@ -294,6 +296,7 @@ struct SFTPBrowserView: View {
 
     @ViewBuilder
     private func fileActions(_ item: SFTPFileItem) -> some View {
+        Button("File Details", systemImage: "info.circle") { inspectedFile = item }
         Button(role: .destructive) {
             viewModel.itemToDelete = item
             viewModel.showDeleteConfirmation = true
@@ -308,5 +311,40 @@ struct SFTPBrowserView: View {
             }
             .tint(AppColors.accent)
         }
+    }
+}
+
+struct SFTPFileInfoView: View {
+    let item: SFTPFileItem
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                LabeledContent("Name") {
+                    Text(item.name).textSelection(.enabled)
+                }
+                LabeledContent("Path") {
+                    Text(item.path)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                }
+                if !item.isDirectory {
+                    LabeledContent("Size", value: item.formattedSize)
+                }
+                if let date = item.modifiedDate {
+                    LabeledContent("Date Modified") {
+                        Text(date, format: .dateTime.year().month(.abbreviated).day().hour().minute())
+                    }
+                }
+                LabeledContent("Permissions", value: item.formattedPermissions)
+            }
+            .navigationTitle("File Details")
+            .iOSOnlyNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .appTheme()
     }
 }

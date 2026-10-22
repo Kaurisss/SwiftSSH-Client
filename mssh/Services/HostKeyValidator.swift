@@ -79,6 +79,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 
     // MARK: - Core Evaluation Logic
 
+    @MainActor
     private static func evaluate(
         host: String,
         port: Int,

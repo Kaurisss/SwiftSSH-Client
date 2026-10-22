@@ -19,6 +19,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
     private var connectionTask: Task<Void, Never>?
     private var writer: TTYStdinWriter?
     private var isDisconnecting = false
+    private var connectionID = UUID()
 
     /// Serialized write queue — all SSH writes are funnelled through this stream
     /// so that only one `outbound.write` is in-flight at a time.
@@ -43,38 +44,44 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
             disconnect()
         }
 
+        let attempt = UUID()
+        connectionID = attempt
         isDisconnecting = false
         updateState(connected: false, status: String(localized: "Opening terminal..."))
 
         connectionTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, self.connectionID == attempt else { return }
             // Track whether a catch arm set an actionable error — without
             // this flag the cleanup `updateState(... "Disconnected")` below
             // overwrites the real reason and the UI shows only a blinking
             // cursor with no diagnosis.
             var didSetTerminalError = false
             do {
-                try await self.runPTYSession(client: client, cols: cols, rows: rows)
+                try await self.runPTYSession(client: client, cols: cols, rows: rows, connectionID: attempt)
             } catch is CancellationError {
                 // Normal disconnect — don't show error
             } catch let error as NIOSSHError {
+                guard self.connectionID == attempt else { return }
                 let msg = self.friendlySSHError(error)
                 self.updateState(connected: false, status: msg)
                 didSetTerminalError = true
             } catch {
-                if !self.isDisconnecting {
+                if self.connectionID == attempt && !self.isDisconnecting {
                     self.updateState(connected: false, status: String(localized: "Error: \(error.localizedDescription)"))
                     didSetTerminalError = true
                 }
             }
+            guard self.connectionID == attempt else { return }
             self.writer = nil
-            if !self.isDisconnecting && !didSetTerminalError {
+            if !self.isDisconnecting && !didSetTerminalError
+                && (self.isConnected || self.statusMessage == String(localized: "Opening terminal...")) {
                 self.updateState(connected: false, status: String(localized: "Disconnected"))
             }
         }
     }
 
     func disconnect() {
+        connectionID = UUID()
         isDisconnecting = true
         connectionTask?.cancel()
         connectionTask = nil
@@ -112,7 +119,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         }
     }
 
-    private func runPTYSession(client: SSHClient, cols: Int, rows: Int) async throws {
+    private func runPTYSession(client: SSHClient, cols: Int, rows: Int, connectionID: UUID) async throws {
         let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
             wantReply: true,
             term: "xterm-256color",
@@ -134,18 +141,22 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
             // Always tidy up the continuation when this session exits, regardless
             // of how it exits (cancellation, error, normal completion).
             writeContinuation.finish()
-            if self.writeStreamContinuation != nil {
+            if self.connectionID == connectionID {
                 self.writeStreamContinuation = nil
             }
         }
 
         try await client.withPTY(ptyRequest) { [weak self] inbound, outbound in
             guard let self else { return }
+            try Task.checkCancellation()
 
-            await MainActor.run {
+            let isCurrent = await MainActor.run {
+                guard self.connectionID == connectionID else { return false }
                 self.writer = outbound
                 self.updateState(connected: true, status: String(localized: "Connected"))
+                return true
             }
+            guard isCurrent else { throw CancellationError() }
 
             // Writer task: drains the write stream ONE item at a time, guaranteeing
             // that each `outbound.write` completes before the next one starts.
@@ -159,7 +170,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                     } catch {
                         // Write failure means the channel is dead; report and bail.
                         await MainActor.run { [weak self] in
-                            guard let self, !self.isDisconnecting else { return }
+                            guard let self, self.connectionID == connectionID, !self.isDisconnecting else { return }
                             self.updateState(connected: false, status: String(localized: "Connection lost"))
                         }
                         break
@@ -177,11 +188,13 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                     case .stdout(let buffer):
                         let bytes = Array(buffer.readableBytesView)
                         await MainActor.run {
+                            guard self.connectionID == connectionID else { return }
                             self.terminalView?.feed(byteArray: ArraySlice(bytes))
                         }
                     case .stderr(let buffer):
                         let bytes = Array(buffer.readableBytesView)
                         await MainActor.run {
+                            guard self.connectionID == connectionID else { return }
                             self.terminalView?.feed(byteArray: ArraySlice(bytes))
                         }
                     }
@@ -192,7 +205,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
             } catch {
                 writerTask.cancel()
                 await MainActor.run {
-                    if !self.isDisconnecting {
+                    if self.connectionID == connectionID && !self.isDisconnecting {
                         self.updateState(connected: false, status: String(localized: "Connection lost: \(error.localizedDescription)"))
                     }
                 }

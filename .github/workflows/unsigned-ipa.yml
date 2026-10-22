@@ -52,6 +52,7 @@ jobs:
           PermitRootLogin no
           UsePAM no
           DisableForwarding yes
+          SetEnv LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8
           Subsystem sftp internal-sftp -d $fixture_root/files
           EOF
           sudo -n /usr/sbin/sshd -t -f "$fixture_root/sshd_config"
@@ -89,6 +90,7 @@ jobs:
           mkdir -p build
           test_status=0
           xcodebuild test \
+            -only-testing:SwiftSSHTests \
             -project SwiftSSH.xcodeproj \
             -scheme SwiftSSH \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
@@ -106,7 +108,10 @@ jobs:
           log = Path('build/tests.log').read_text()
           for name in ('testKeyAuthenticationAndSFTPRoundTripKeepsExistingFiles',
                        'testRejectingUnknownHostPreventsAuthentication',
-                       'testTrustedHostDoesNotPromptAgain'):
+                       'testTrustedHostDoesNotPromptAgain',
+                       'testDisconnectDuringHostKeyDecisionCannotCreateALateConnectionOrTrustEntry',
+                       'testClosingSessionAfterTrustKeepsItDisconnectedAndPreservesTheAttemptAddress',
+                       'testPTYReconnectStillDeliversInputAfterPreviousSessionCleanup'):
               assert re.search(r'Test Case .*SSHIntegrationTests ' + name + r'.* passed', log), name + ' did not pass'
           assert re.search(r'Test Case .*SSHFlowTests testLiveSSHAndFilesFlow.* passed', log), 'Live SSH UI flow did not pass'
           PY

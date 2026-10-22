@@ -122,7 +122,7 @@ struct SplitSessionTabView: View {
             if let promptType = session.pendingHostKeyPrompt {
                 Color.black.opacity(0.6).ignoresSafeArea()
                 HostKeyPromptView(promptType: promptType,
-                                  host: session.profile.host, port: session.profile.port,
+                                  host: session.endpoint.host, port: session.endpoint.port,
                                   onAccept: { session.acceptHostKey() },
                                   onReject: { session.rejectHostKey() })
             }
@@ -140,6 +140,7 @@ struct SplitSessionTabView: View {
     /// (warning + Retry / Close) once it has settled into a failure.
     private func sessionStatusBanner(session: SessionViewModel) -> some View {
         let loading = SessionBannerInfo.isLoading(for: session)
+        let disconnected = session.statusMessage == String(localized: "Disconnected")
         return VStack(spacing: AppSpacing.md) {
             HStack(alignment: .top, spacing: AppSpacing.sm) {
                 if loading {
@@ -147,8 +148,8 @@ struct SplitSessionTabView: View {
                         .controlSize(.small)
                         .tint(AppColors.accent)
                 } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppColors.warning)
+                    Image(systemName: disconnected ? "network" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(disconnected ? AppColors.textSecondary : AppColors.warning)
                         .font(.callout)
                 }
                 Text(session.statusMessage)
@@ -164,7 +165,7 @@ struct SplitSessionTabView: View {
                     Button {
                         Task { await session.connect() }
                     } label: {
-                        Text("Retry")
+                        Text(disconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
                             .font(AppFonts.label)
                             .foregroundStyle(AppColors.accent)
                             .padding(.horizontal, AppSpacing.xl)
@@ -192,7 +193,7 @@ struct SplitSessionTabView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    (loading ? AppColors.accent : AppColors.error).opacity(0.3),
+                    (loading ? AppColors.accent : disconnected ? AppColors.border : AppColors.error).opacity(0.3),
                     lineWidth: 0.5
                 )
         )
@@ -260,6 +261,10 @@ struct SplitSessionTabView: View {
 
             if isSplit {
                 Menu {
+                    if let session = focusedSession, !session.isConnected {
+                        Button("Reconnect", systemImage: "arrow.clockwise") { Task { await session.connect() } }
+                            .disabled(SessionBannerInfo.isLoading(for: session))
+                    }
                     Button("Snippets", systemImage: "text.badge.plus") { snippetSession = focusedSession }
                         .disabled(focusedSession?.isConnected != true)
                     Button("Paste", systemImage: "doc.on.clipboard") {
@@ -394,7 +399,7 @@ private enum SessionBannerInfo {
     static func shouldShow(for session: SessionViewModel) -> Bool {
         if session.isConnected { return false }
         let s = session.statusMessage
-        return !s.isEmpty && s != String(localized: "Disconnected")
+        return !s.isEmpty
     }
 
     static func isLoading(for session: SessionViewModel) -> Bool {

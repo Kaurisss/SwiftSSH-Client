@@ -22,10 +22,10 @@ struct TerminalSessionView: View {
             // The earlier strict "Connection failed" / "Error:" prefix-match
             // missed our pre-flight errors (KeyParseError, AuthResolutionError),
             // leaving the user with a blank cursor and no explanation.
-            if shouldShowErrorOverlay {
+            if shouldShowStatusOverlay {
                 VStack {
                     Spacer()
-                    errorBanner
+                    statusBanner
                         .padding(.horizontal, AppSpacing.lg)
                         .padding(.bottom, AppSpacing.xxl)
                 }
@@ -38,8 +38,8 @@ struct TerminalSessionView: View {
 
                 HostKeyPromptView(
                     promptType: promptType,
-                    host: session.profile.host,
-                    port: session.profile.port,
+                    host: session.endpoint.host,
+                    port: session.endpoint.port,
                     onAccept: { session.acceptHostKey() },
                     onReject: { session.rejectHostKey() }
                 )
@@ -47,7 +47,7 @@ struct TerminalSessionView: View {
         }
         .onAppear {
             session.modelContainer = modelContext.container
-            if !session.isConnected && session.statusMessage != String(localized: "Connecting...") {
+            if session.connectionAttempts == 0 && session.sshClient == nil {
                 Task { await session.connect() }
             }
         }
@@ -81,6 +81,10 @@ struct TerminalSessionView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    if !session.isConnected {
+                        Button("Reconnect", systemImage: "arrow.clockwise") { Task { await session.connect() } }
+                            .disabled(isLoading)
+                    }
                     Button("Snippets", systemImage: "text.badge.plus") { showSnippetPicker = true }
                         .disabled(!session.isConnected)
                     Button("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
@@ -129,9 +133,9 @@ struct TerminalSessionView: View {
     /// pre-flight errors (KeyParseError, AuthResolutionError) whose messages
     /// don't start with "Connection failed", AND the loading states so the
     /// user gets immediate feedback instead of a silent blinking cursor.
-    private var shouldShowErrorOverlay: Bool {
+    private var shouldShowStatusOverlay: Bool {
         if session.isConnected { return false }
-        if session.statusMessage.isEmpty || session.statusMessage == String(localized: "Disconnected") {
+        if session.statusMessage.isEmpty {
             return false
         }
         return true
@@ -144,9 +148,11 @@ struct TerminalSessionView: View {
             && (session.statusMessage == String(localized: "Connecting...") || session.statusMessage == String(localized: "Opening terminal..."))
     }
 
-    // MARK: - Error Banner
+    private var isDisconnected: Bool { session.statusMessage == String(localized: "Disconnected") }
 
-    private var errorBanner: some View {
+    // MARK: - Status Banner
+
+    private var statusBanner: some View {
         VStack(spacing: AppSpacing.md) {
             HStack(alignment: .top, spacing: AppSpacing.sm) {
                 if isLoading {
@@ -154,8 +160,8 @@ struct TerminalSessionView: View {
                         .controlSize(.small)
                         .tint(AppColors.accent)
                 } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppColors.warning)
+                    Image(systemName: isDisconnected ? "network" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(isDisconnected ? AppColors.textSecondary : AppColors.warning)
                         .font(.callout)
                 }
                 Text(session.statusMessage)
@@ -173,7 +179,7 @@ struct TerminalSessionView: View {
                     Button {
                         Task { await session.connect() }
                     } label: {
-                        Text("Retry")
+                        Text(isDisconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
                             .font(AppFonts.label)
                             .foregroundStyle(AppColors.accent)
                             .padding(.horizontal, AppSpacing.xl)
@@ -202,7 +208,7 @@ struct TerminalSessionView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(
-                    (isLoading ? AppColors.accent : AppColors.error).opacity(0.3),
+                    (isLoading ? AppColors.accent : isDisconnected ? AppColors.border : AppColors.error).opacity(0.3),
                     lineWidth: 0.5
                 )
         )
@@ -232,9 +238,9 @@ struct ConnectionInfoPopover: View {
             }
 
             VStack(spacing: AppSpacing.sm) {
-                infoRow("person.fill", "User", session.profile.username)
-                infoRow("server.rack", "Host", session.profile.host)
-                infoRow("number", "Port", "\(session.profile.port)")
+                infoRow("person.fill", "User", session.endpoint.username)
+                infoRow("server.rack", "Host", session.endpoint.host)
+                infoRow("number", "Port", "\(session.endpoint.port)")
                 infoRow(
                     session.isConnected ? "checkmark.circle.fill" : "xmark.circle",
                     "Status",

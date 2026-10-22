@@ -7,6 +7,7 @@ final class SSHFlowTests: XCTestCase {
             throw XCTSkip("The CI loopback SSH fixture is not configured.")
         }
         let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: fixtureURL))
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
                                "-hasCompletedOnboarding", "YES"]
@@ -41,10 +42,7 @@ final class SSHFlowTests: XCTestCase {
         capture("Live-SSH-Host-Key-Prompt")
         trust.tap()
         let details = app.buttons["connection-details"]
-        let connected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            details.value as? String == "Connected"
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [connected], timeout: 15), .completed)
+        waitForConnected(details)
 
         app.buttons["terminal-actions"].tap()
         app.buttons["Files"].tap()
@@ -73,6 +71,25 @@ final class SSHFlowTests: XCTestCase {
         app.buttons["Done"].tap()
 
         app.buttons["terminal-actions"].tap()
+        app.buttons["Snippets"].tap()
+        app.buttons["Add Snippet"].firstMatch.tap()
+        let snippetName = "CI-Exit-\(UUID().uuidString.prefix(6))"
+        app.textFields["snippet-label"].tap()
+        app.textFields["snippet-label"].typeText(snippetName)
+        app.textViews["snippet-command"].tap()
+        app.textViews["snippet-command"].typeText("exit\n")
+        app.buttons["snippet-save"].tap()
+        let snippet = app.buttons.containing(.staticText, identifier: snippetName).firstMatch
+        XCTAssertTrue(snippet.waitForExistence(timeout: 5))
+        snippet.tap()
+        let reconnect = app.buttons["Reconnect"]
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+        capture("Live-SSH-Disconnected-Recovery")
+        reconnect.tap()
+        waitForConnected(details)
+        XCTAssertFalse(app.buttons["Trust"].exists)
+
+        app.buttons["terminal-actions"].tap()
         app.buttons["Close Session"].tap()
         XCTAssertTrue(app.alerts.buttons["Cancel"].waitForExistence(timeout: 5))
         app.alerts.buttons["Cancel"].tap()
@@ -88,6 +105,14 @@ final class SSHFlowTests: XCTestCase {
         let username: String
         let port: Int
         let privateKey: String
+    }
+
+    @MainActor
+    private func waitForConnected(_ details: XCUIElement) {
+        let connected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            details.exists && details.value as? String == "Connected"
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [connected], timeout: 15), .completed)
     }
 
     @MainActor

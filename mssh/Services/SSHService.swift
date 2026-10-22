@@ -5,8 +5,10 @@ import NIOSSH
 import Crypto
 import SwiftData
 
+@MainActor
 final class SSHService {
     private var client: SSHClient?
+    private var connectionID = UUID()
 
     var isConnected: Bool {
         client != nil
@@ -25,12 +27,23 @@ final class SSHService {
         hostKeyPrompt: @escaping @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
     ) async throws -> SSHClient {
         let citadelAuth = try authMethod.toCitadel(username: username)
+        let attempt = UUID()
+        connectionID = attempt
+        let previousClient = client
+        client = nil
+        try? await previousClient?.close()
+        guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
 
         let validator = SSHHostKeyValidator.tofu(
             host: host,
             port: port,
             modelContainer: modelContainer,
-            promptHandler: hostKeyPrompt
+            promptHandler: { [weak self] prompt in
+                guard await self?.connectionID == attempt else { return .reject }
+                let decision = await hostKeyPrompt(prompt)
+                guard await self?.connectionID == attempt else { return .reject }
+                return decision
+            }
         )
 
         // First attempt: default algorithms (safe, no buffer overflow)
@@ -44,8 +57,10 @@ final class SSHService {
                 algorithms: nil
             )
         } catch let error as SSHConnectionError {
+            guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
             throw error
         } catch {
+            guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
             // Check if this looks like an algorithm negotiation failure
             let errorDesc = String(describing: error).lowercased()
             let isAlgorithmIssue = errorDesc.contains("algorithm")
@@ -73,6 +88,10 @@ final class SSHService {
             }
         }
 
+        guard connectionID == attempt, !Task.isCancelled else {
+            try? await connectedClient.close()
+            throw CancellationError()
+        }
         self.client = connectedClient
         return connectedClient
     }
@@ -88,8 +107,9 @@ final class SSHService {
     ) async throws -> SSHClient {
         try await withThrowingTaskGroup(of: SSHClient.self) { group in
             group.addTask {
+                let client: SSHClient
                 if let algorithms {
-                    return try await SSHClient.connect(
+                    client = try await SSHClient.connect(
                         host: host,
                         port: port,
                         authenticationMethod: authenticationMethod,
@@ -98,7 +118,7 @@ final class SSHService {
                         algorithms: algorithms
                     )
                 } else {
-                    return try await SSHClient.connect(
+                    client = try await SSHClient.connect(
                         host: host,
                         port: port,
                         authenticationMethod: authenticationMethod,
@@ -106,6 +126,11 @@ final class SSHService {
                         reconnect: .never
                     )
                 }
+                if Task.isCancelled {
+                    try? await client.close()
+                    throw CancellationError()
+                }
+                return client
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(15))
@@ -120,8 +145,10 @@ final class SSHService {
     }
 
     func disconnect() async {
-        try? await client?.close()
+        connectionID = UUID()
+        let previousClient = client
         client = nil
+        try? await previousClient?.close()
     }
 }
 

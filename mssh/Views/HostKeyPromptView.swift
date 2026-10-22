@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HostKeyPromptView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let promptType: HostKeyPromptType
     let host: String
     let port: Int
@@ -43,7 +44,7 @@ struct HostKeyPromptView: View {
 
     private var headerSection: some View {
         VStack(spacing: AppSpacing.sm) {
-            ZStack {
+            if !dynamicTypeSize.isAccessibilitySize { ZStack {
                 Circle()
                     .fill(isWarning ? AppColors.errorDim : AppColors.accentDim)
                     .frame(width: 56, height: 56)
@@ -52,12 +53,13 @@ struct HostKeyPromptView: View {
                     .foregroundStyle(isWarning ? AppColors.error : AppColors.accent)
             }
             .accessibilityHidden(true)
+            }
 
             Text(isWarning ? String(localized: "Host Key Changed") : String(localized: "Unknown Host Key"))
                 .font(.system(.headline, design: .monospaced))
                 .foregroundStyle(AppColors.textPrimary)
                 .accessibilityAddTraits(.isHeader)
-            Text(host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)")
+            Text(verbatim: host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)")
                 .font(.callout.monospaced())
                 .foregroundStyle(AppColors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -99,7 +101,10 @@ struct HostKeyPromptView: View {
     }
 
     private var buttonSection: some View {
-        HStack(spacing: AppSpacing.md) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: AppSpacing.sm))
+            : AnyLayout(HStackLayout(spacing: AppSpacing.md))
+        return layout {
             Button(action: onReject) {
                 Text("Reject")
                     .font(.system(.subheadline, weight: .medium))

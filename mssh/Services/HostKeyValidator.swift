@@ -25,18 +25,15 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
     private let host: String
     private let port: Int
     private let modelContainer: ModelContainer
-    private let promptHandler: @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
 
     init(
         host: String,
         port: Int,
-        modelContainer: ModelContainer,
-        promptHandler: @escaping @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        modelContainer: ModelContainer
     ) {
         self.host = host
         self.port = port
         self.modelContainer = modelContainer
-        self.promptHandler = promptHandler
     }
 
     func validateHostKey(
@@ -51,7 +48,6 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
         let host = self.host
         let port = self.port
         let container = self.modelContainer
-        let promptHandler = self.promptHandler
 
         // Do all the async work off the event loop, then resolve the promise
         Task {
@@ -63,7 +59,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
                     presentedFingerprint: presentedFingerprint,
                     keyType: keyType,
                     container: container,
-                    promptHandler: promptHandler
+                    promptHandler: nil
                 )
                 switch result {
                 case .accept:
@@ -80,14 +76,14 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
     // MARK: - Core Evaluation Logic
 
     @MainActor
-    private static func evaluate(
+    static func evaluate(
         host: String,
         port: Int,
         presentedKeyData: Data,
         presentedFingerprint: String,
         keyType: String,
         container: ModelContainer,
-        promptHandler: @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        promptHandler: (@Sendable (HostKeyPromptType) async -> HostKeyPromptResult)?
     ) async throws -> HostKeyPromptResult {
         let context = ModelContext(container)
         let identifier = "\(host):\(port)"
@@ -105,6 +101,10 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
                 try context.save()
                 return .accept
             } else {
+                guard let promptHandler else {
+                    throw HostKeyApprovalRequired(keyData: presentedKeyData,
+                        fingerprint: presentedFingerprint, keyType: keyType)
+                }
                 // KEY CHANGED -- ask the user
                 let oldFingerprint = existing.fingerprintSHA256
                 let decision = await promptHandler(
@@ -127,6 +127,10 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
                 return decision
             }
         } else {
+            guard let promptHandler else {
+                throw HostKeyApprovalRequired(keyData: presentedKeyData,
+                    fingerprint: presentedFingerprint, keyType: keyType)
+            }
             // First connection to this host -- ask user to accept
             let decision = await promptHandler(
                 .newHost(fingerprint: presentedFingerprint, keyType: keyType)
@@ -183,20 +187,38 @@ extension SSHHostKeyValidator {
     static func tofu(
         host: String,
         port: Int,
-        modelContainer: ModelContainer,
-        promptHandler: @escaping @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        modelContainer: ModelContainer
     ) -> SSHHostKeyValidator {
         let validator = TOFUHostKeyValidator(
             host: host,
             port: port,
-            modelContainer: modelContainer,
-            promptHandler: promptHandler
+            modelContainer: modelContainer
         )
         return .custom(validator)
     }
 }
 
 // MARK: - Errors
+
+struct HostKeyApprovalRequired: Error {
+    let keyData: Data
+    let fingerprint: String
+    let keyType: String
+}
+
+final class PinnedHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Sendable {
+    let keyData: Data
+
+    init(keyData: Data) { self.keyData = keyData }
+
+    func validateHostKey(hostKey: NIOSSHPublicKey, validationCompletePromise: EventLoopPromise<Void>) {
+        if TOFUHostKeyValidator.serializePublicKey(hostKey) == keyData {
+            validationCompletePromise.succeed(())
+        } else {
+            validationCompletePromise.fail(HostKeyValidationError.rejected)
+        }
+    }
+}
 
 enum HostKeyValidationError: LocalizedError {
     case rejected

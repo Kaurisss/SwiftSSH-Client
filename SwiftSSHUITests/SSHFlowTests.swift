@@ -10,7 +10,7 @@ final class SSHFlowTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-hasCompletedOnboarding", "YES"]
+                               "-hasCompletedOnboarding", "YES", "-terminalBlinkCursor", "NO"]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Keys"].waitForExistence(timeout: 15))
         app.tabBars.buttons["Keys"].tap()

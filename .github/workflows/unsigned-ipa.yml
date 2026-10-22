@@ -90,7 +90,6 @@ jobs:
           mkdir -p build
           test_status=0
           xcodebuild test \
-            -only-testing:SwiftSSHTests \
             -project SwiftSSH.xcodeproj \
             -scheme SwiftSSH \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
@@ -111,7 +110,8 @@ jobs:
                        'testTrustedHostDoesNotPromptAgain',
                        'testDisconnectDuringHostKeyDecisionCannotCreateALateConnectionOrTrustEntry',
                        'testClosingSessionAfterTrustKeepsItDisconnectedAndPreservesTheAttemptAddress',
-                       'testPTYReconnectStillDeliversInputAfterPreviousSessionCleanup'):
+                       'testPTYReconnectStillDeliversInputAfterPreviousSessionCleanup',
+                       'testHostKeyDecisionCanOutlastNetworkTimeout'):
               assert re.search(r'Test Case .*SSHIntegrationTests ' + name + r'.* passed', log), name + ' did not pass'
           assert re.search(r'Test Case .*SSHFlowTests testLiveSSHAndFilesFlow.* passed', log), 'Live SSH UI flow did not pass'
           PY

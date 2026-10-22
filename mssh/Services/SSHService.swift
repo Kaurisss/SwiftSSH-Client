@@ -37,25 +37,38 @@ final class SSHService {
         let validator = SSHHostKeyValidator.tofu(
             host: host,
             port: port,
-            modelContainer: modelContainer,
-            promptHandler: { [weak self] prompt in
-                guard await self?.connectionID == attempt else { return .reject }
-                let decision = await hostKeyPrompt(prompt)
-                guard await self?.connectionID == attempt else { return .reject }
-                return decision
-            }
+            modelContainer: modelContainer
         )
+
+        func establish(algorithms: SSHAlgorithms?) async throws -> SSHClient {
+            do {
+                return try await connectWithTimeout(host: host, port: port,
+                    authenticationMethod: citadelAuth, hostKeyValidator: validator, algorithms: algorithms)
+            } catch let approval as HostKeyApprovalRequired {
+                guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
+                // Citadel's fixed handshake deadline must not include the user's decision time.
+                let result = try await TOFUHostKeyValidator.evaluate(host: host, port: port,
+                    presentedKeyData: approval.keyData, presentedFingerprint: approval.fingerprint,
+                    keyType: approval.keyType, container: modelContainer,
+                    promptHandler: { [weak self] prompt in
+                        guard await self?.connectionID == attempt else { return .reject }
+                        let decision = await hostKeyPrompt(prompt)
+                        guard await self?.connectionID == attempt, !Task.isCancelled else { return .reject }
+                        return decision
+                    })
+                guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
+                guard result == .accept else { throw HostKeyValidationError.rejected }
+                return try await connectWithTimeout(host: host, port: port,
+                    authenticationMethod: citadelAuth,
+                    hostKeyValidator: .custom(PinnedHostKeyValidator(keyData: approval.keyData)),
+                    algorithms: algorithms)
+            }
+        }
 
         // First attempt: default algorithms (safe, no buffer overflow)
         let connectedClient: SSHClient
         do {
-            connectedClient = try await connectWithTimeout(
-                host: host,
-                port: port,
-                authenticationMethod: citadelAuth,
-                hostKeyValidator: validator,
-                algorithms: nil
-            )
+            connectedClient = try await establish(algorithms: nil)
         } catch let error as SSHConnectionError {
             guard connectionID == attempt, !Task.isCancelled else { throw CancellationError() }
             throw error
@@ -72,13 +85,7 @@ final class SSHService {
                 // Retry with .all for maximum compatibility (risk of buffer overflow on some servers,
                 // but better than failing to connect at all)
                 do {
-                    connectedClient = try await connectWithTimeout(
-                        host: host,
-                        port: port,
-                        authenticationMethod: citadelAuth,
-                        hostKeyValidator: validator,
-                        algorithms: .all
-                    )
+                    connectedClient = try await establish(algorithms: .all)
                 } catch {
                     // .all also failed — throw the original algorithm error which is more informative
                     throw error
@@ -107,25 +114,9 @@ final class SSHService {
     ) async throws -> SSHClient {
         try await withThrowingTaskGroup(of: SSHClient.self) { group in
             group.addTask {
-                let client: SSHClient
-                if let algorithms {
-                    client = try await SSHClient.connect(
-                        host: host,
-                        port: port,
-                        authenticationMethod: authenticationMethod,
-                        hostKeyValidator: hostKeyValidator,
-                        reconnect: .never,
-                        algorithms: algorithms
-                    )
-                } else {
-                    client = try await SSHClient.connect(
-                        host: host,
-                        port: port,
-                        authenticationMethod: authenticationMethod,
-                        hostKeyValidator: hostKeyValidator,
-                        reconnect: .never
-                    )
-                }
+                let client = try await SSHClient.connect(host: host, port: port,
+                    authenticationMethod: authenticationMethod, hostKeyValidator: hostKeyValidator,
+                    reconnect: .never, algorithms: algorithms ?? SSHAlgorithms(), connectTimeout: .seconds(15))
                 if Task.isCancelled {
                     try? await client.close()
                     throw CancellationError()

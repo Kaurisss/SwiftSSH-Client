@@ -43,7 +43,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
         return UIFont.monospacedSystemFont(ofSize: pt, weight: .regular)
     }
 
-    private func resolvedColor(_ color: Color) -> UIColor {
+    private func resolvedColor(_ color: SwiftUI.Color) -> UIColor {
         UIColor(color).resolvedColor(with: UITraitCollection(
             userInterfaceStyle: colorScheme == .dark ? .dark : .light
         ))

@@ -52,7 +52,7 @@ jobs:
           PermitRootLogin no
           UsePAM no
           DisableForwarding yes
-          Subsystem sftp internal-sftp
+          Subsystem sftp internal-sftp -d $fixture_root/files
           EOF
           sudo -n /usr/sbin/sshd -t -f "$fixture_root/sshd_config"
           sudo -n /usr/sbin/sshd -D -e -f "$fixture_root/sshd_config" > build/ssh-fixture.log 2>&1 &
@@ -108,6 +108,7 @@ jobs:
                        'testRejectingUnknownHostPreventsAuthentication',
                        'testTrustedHostDoesNotPromptAgain'):
               assert re.search(r'Test Case .*SSHIntegrationTests ' + name + r'.* passed', log), name + ' did not pass'
+          assert re.search(r'Test Case .*SSHFlowTests testLiveSSHAndFilesFlow.* passed', log), 'Live SSH UI flow did not pass'
           PY
           fi
           xcrun xcresulttool export attachments \
@@ -162,6 +163,11 @@ jobs:
           test -f "$app/Info.plist"
           test -f "$app/SwiftSSH"
           test ! -f "$app/embedded.mobileprovision"
+          python3 - "$app" <<'PY'
+          import sys
+          from pathlib import Path
+          assert not list(Path(sys.argv[1]).rglob('ssh-integration.json')), 'Test credentials must not enter the application archive'
+          PY
           mkdir -p build/ipa/Payload
           ditto "$app" build/ipa/Payload/SwiftSSH.app
           (cd build/ipa && zip -qry ../SwiftSSH-unsigned.ipa Payload)

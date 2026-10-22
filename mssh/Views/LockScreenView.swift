@@ -72,6 +72,7 @@ struct LockScreenView: View {
                         .padding(.vertical, AppSpacing.md)
                     }
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(AppColors.onEmphasis)
                     .tint(AppColors.accent)
                     .disabled(isAuthenticating)
 

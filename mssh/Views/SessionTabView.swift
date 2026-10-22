@@ -15,6 +15,7 @@ struct SessionTabView: View {
                                 SessionTab(
                                     title: session.title,
                                     isConnected: session.isConnected,
+                                    status: session.statusMessage,
                                     isActive: session.id == sessionManager.activeSessionID,
                                     onTap: {
                                         sessionManager.activeSessionID = session.id
@@ -54,6 +55,7 @@ struct SessionTabView: View {
 struct SessionTab: View {
     let title: String
     let isConnected: Bool
+    let status: String
     let isActive: Bool
     let onTap: () -> Void
     let onClose: () -> Void
@@ -75,7 +77,7 @@ struct SessionTab: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(isActive ? .isSelected : [])
-            .accessibilityValue(isConnected ? Text("Connected") : Text("Disconnected"))
+            .accessibilityValue(status)
 
             Button(action: onClose) {
                 Label("Close \(title)", systemImage: "xmark")

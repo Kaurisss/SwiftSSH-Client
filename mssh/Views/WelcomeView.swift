@@ -37,6 +37,7 @@ struct WelcomeView: View {
 
                 Button("Get Started", action: onComplete)
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(AppColors.onEmphasis)
                     .tint(AppColors.accent)
             }
             .padding(AppSpacing.xl)

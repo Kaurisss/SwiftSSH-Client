@@ -132,6 +132,7 @@ struct KeyManagerView: View {
                     .frame(maxWidth: 260)
                 }
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(AppColors.onEmphasis)
 
                 Button {
                     showImportSheet = true

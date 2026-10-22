@@ -319,6 +319,7 @@ struct KeyImportWizardView: View {
                 }
                 .disabled(selectedCount == 0)
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(AppColors.onEmphasis)
             }
             .padding()
         }

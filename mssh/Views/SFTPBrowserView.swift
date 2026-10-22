@@ -113,6 +113,7 @@ struct SFTPBrowserView: View {
                             Label("Save or Share", systemImage: "square.and.arrow.up")
                         }
                         .buttonStyle(.borderedProminent)
+                        .foregroundStyle(AppColors.onEmphasis)
                     }
                     .padding(AppSpacing.xl)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

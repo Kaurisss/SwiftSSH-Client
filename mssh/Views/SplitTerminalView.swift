@@ -122,6 +122,7 @@ struct SplitSessionTabView: View {
             if let promptType = session.pendingHostKeyPrompt {
                 Color.black.opacity(0.6).ignoresSafeArea()
                 HostKeyPromptView(promptType: promptType,
+                                  host: session.profile.host, port: session.profile.port,
                                   onAccept: { session.acceptHostKey() },
                                   onReject: { session.rejectHostKey() })
             }
@@ -290,6 +291,7 @@ struct SplitSessionTabView: View {
                     SessionTab(
                         title: session.title,
                         isConnected: session.isConnected,
+                        status: session.statusMessage,
                         isActive: session.id == sessionManager.activeSessionID,
                         onTap: {
                             splitSession = nil

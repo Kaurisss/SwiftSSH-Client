@@ -77,7 +77,7 @@ struct ConnectionFormView: View {
                     #else
                     formField("Host", text: $host, placeholder: "192.168.1.1 or host.com", autocap: false)
                     #endif
-                    HStack {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         #if os(iOS)
                         formField("Port", text: $port, placeholder: "22", keyboard: UIKeyboardType.numberPad)
                             .onChange(of: port) { validatePort() }
@@ -105,6 +105,7 @@ struct ConnectionFormView: View {
                             .tag(AuthenticationType.key)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("connection-auth-method")
 
                     if authType == .password {
                         SecureField("Password", text: $password)
@@ -126,6 +127,7 @@ struct ConnectionFormView: View {
                                 .tag(Optional(key.syncID))
                             }
                         }
+                        .accessibilityIdentifier("connection-key")
 
                         if keys.isEmpty {
                             NavigationLink {
@@ -301,11 +303,17 @@ struct ConnectionFormView: View {
     }
 
     private func formField(_ title: String, text: Binding<String>, placeholder: String = "", keyboard: Any? = nil, autocap: Bool = true) -> some View {
-        TextField(LocalizedStringKey(title), text: text, prompt: Text(LocalizedStringKey(placeholder)))
-            .font(.body)
-            .iOSOnlyTextInputAutocapitalization(autocap)
-            .autocorrectionDisabled()
-            .iOSOnlyKeyboardType(keyboard)
+        LabeledContent {
+            TextField(LocalizedStringKey(title), text: text, prompt: Text(LocalizedStringKey(placeholder)))
+                .font(.body)
+                .multilineTextAlignment(.trailing)
+                .iOSOnlyTextInputAutocapitalization(autocap)
+                .autocorrectionDisabled()
+                .iOSOnlyKeyboardType(keyboard)
+                .accessibilityIdentifier("connection-\(title.lowercased())")
+        } label: {
+            Text(LocalizedStringKey(title))
+        }
     }
 
     private func validatePort() {

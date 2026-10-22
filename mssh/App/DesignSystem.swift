@@ -11,8 +11,8 @@ enum AppColors {
     static let borderActive = Color(uiColor: .separator)
 
     static let textPrimary = Color(uiColor: .label)
-    static let textSecondary = Color(uiColor: .secondaryLabel)
-    static let textTertiary = Color(uiColor: .tertiaryLabel)
+    static let textSecondary = adaptive(light: 0x555555, dark: 0xAAAAAA)
+    static let textTertiary = textSecondary
 
     static let accent = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
@@ -20,15 +20,25 @@ enum AppColors {
             : UIColor(red: 0, green: 0.43, blue: 0.46, alpha: 1)
     })
     static let accentDim = accent.opacity(0.12)
+    static let onEmphasis = adaptive(light: 0xFFFFFF, dark: 0x000000)
 
-    static let connected = Color(uiColor: .systemGreen)
+    static let connected = adaptive(light: 0x1F7A36, dark: 0x5DE27A)
     static let connectedDim = connected.opacity(0.15)
-    static let warning = Color(uiColor: .systemOrange)
-    static let error = Color(uiColor: .systemRed)
+    static let warning = adaptive(light: 0x9A5D00, dark: 0xFFBF54)
+    static let error = adaptive(light: 0xB42318, dark: 0xFF8A80)
     static let errorDim = error.opacity(0.15)
 
     static let terminalBg = Color(uiColor: .systemBackground)
     static let terminalCursor = accent
+
+    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let rgb = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((rgb >> 16) & 255) / 255,
+                           green: CGFloat((rgb >> 8) & 255) / 255,
+                           blue: CGFloat(rgb & 255) / 255, alpha: 1)
+        })
+    }
 }
 
 enum AppAppearance: String, CaseIterable, Identifiable {

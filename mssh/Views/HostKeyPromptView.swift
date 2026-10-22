@@ -2,14 +2,19 @@ import SwiftUI
 
 struct HostKeyPromptView: View {
     let promptType: HostKeyPromptType
+    let host: String
+    let port: Int
     let onAccept: () -> Void
     let onReject: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            headerSection
-            detailSection
+            ViewThatFits(in: .vertical) {
+                information
+                ScrollView { information }
+            }
             buttonSection
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: 360)
         .background(AppColors.surface)
@@ -27,6 +32,13 @@ struct HostKeyPromptView: View {
         return false
     }
 
+    private var information: some View {
+        VStack(spacing: 0) {
+            headerSection
+            detailSection
+        }
+    }
+
     // MARK: - Sections
 
     private var headerSection: some View {
@@ -39,10 +51,17 @@ struct HostKeyPromptView: View {
                     .font(.system(size: 24))
                     .foregroundStyle(isWarning ? AppColors.error : AppColors.accent)
             }
+            .accessibilityHidden(true)
 
             Text(isWarning ? String(localized: "Host Key Changed") : String(localized: "Unknown Host Key"))
                 .font(.system(.headline, design: .monospaced))
                 .foregroundStyle(AppColors.textPrimary)
+                .accessibilityAddTraits(.isHeader)
+            Text(host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)")
+                .font(.callout.monospaced())
+                .foregroundStyle(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.top, AppSpacing.xl)
@@ -55,7 +74,7 @@ struct HostKeyPromptView: View {
                  ? String(localized: "The host key has changed. This could indicate a MITM attack, or the server was reinstalled.")
                  : String(localized: "First time connecting to this host. Verify the fingerprint before continuing.")
             )
-            .font(.caption)
+            .font(.callout)
             .foregroundStyle(AppColors.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -97,6 +116,7 @@ struct HostKeyPromptView: View {
                     .padding(.vertical, AppSpacing.md)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppColors.onEmphasis)
             .tint(isWarning ? AppColors.error : AppColors.accent)
         }
         .padding(.horizontal, AppSpacing.lg)
@@ -106,10 +126,10 @@ struct HostKeyPromptView: View {
     private func fingerprintRow(_ label: LocalizedStringKey, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(AppColors.textTertiary)
             Text(value)
-                .font(.system(size: 11, design: .monospaced))
+                .font(.caption.monospaced())
                 .foregroundStyle(AppColors.textPrimary)
                 .textSelection(.enabled)
         }

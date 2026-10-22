@@ -19,8 +19,7 @@ struct KeyImportView: View {
                     Button {
                         showFilePicker = true
                     } label: {
-                        sourceLabel("Import from File", detail: KeyImportSource.files.description,
-                                    icon: "doc.badge.arrow.up", selected: selectedSource == .files)
+                        sourceLabel("Import from File", icon: "doc.badge.arrow.up", selected: selectedSource == .files)
                     }
                     .accessibilityIdentifier("key-import-files")
 
@@ -31,14 +30,9 @@ struct KeyImportView: View {
                         }
                         selectedSource = .clipboard
                     } label: {
-                        sourceLabel("Paste Key", detail: KeyImportSource.clipboard.description,
-                                    icon: "doc.on.clipboard", selected: selectedSource == .clipboard)
+                        sourceLabel("Paste Key", icon: "doc.on.clipboard", selected: selectedSource == .clipboard)
                     }
                     .accessibilityIdentifier("key-import-paste")
-                } header: {
-                    Text("Choose Source")
-                } footer: {
-                    Text("Choose a private key file or paste its contents. Imported keys are stored in this device's Keychain.")
                 }
                 .buttonStyle(.plain)
 
@@ -71,8 +65,6 @@ struct KeyImportView: View {
                             .accessibilityIdentifier("key-import-private-key")
                     } header: {
                         Text("Private Key (PEM)")
-                    } footer: {
-                        Text("Paste your PEM-encoded private key or import from a file. Stored securely in the iOS Keychain.")
                     }
                 }
 
@@ -99,22 +91,15 @@ struct KeyImportView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if selectedSource != nil {
-                    VStack(spacing: AppSpacing.sm) {
-                        Button(action: importKey) {
-                            Label("Import", systemImage: "lock.shield")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.large)
-                        .disabled(pemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityIdentifier("key-import-save")
-
-                        Text("Private keys will be stored in the iOS Keychain and never leave this device.")
-                            .font(.caption)
-                            .foregroundStyle(AppColors.textSecondary)
-                            .multilineTextAlignment(.center)
+                    Button(action: importKey) {
+                        Label("Import", systemImage: "lock.shield")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .foregroundStyle(AppColors.onEmphasis)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("key-import-save")
                     .padding(AppSpacing.lg)
                     .background(AppColors.background)
                 }
@@ -154,21 +139,15 @@ struct KeyImportView: View {
         .appTheme()
     }
 
-    private func sourceLabel(_ title: LocalizedStringKey, detail: String,
-                             icon: String, selected: Bool) -> some View {
+    private func sourceLabel(_ title: LocalizedStringKey, icon: String, selected: Bool) -> some View {
         HStack(spacing: AppSpacing.md) {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(AppColors.accent)
                 .frame(width: 32)
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(AppColors.textPrimary)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textSecondary)
-            }
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppColors.textPrimary)
             Spacer(minLength: AppSpacing.sm)
             Image(systemName: selected ? "checkmark.circle.fill" : "chevron.right")
                 .foregroundStyle(selected ? AppColors.accent : AppColors.textSecondary)

@@ -67,6 +67,7 @@ private struct TerminalTabContent: View {
                 } actions: {
                     Button("Connect") { selectedTab = .connections }
                         .buttonStyle(.borderedProminent)
+                        .foregroundStyle(AppColors.onEmphasis)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppColors.background)
@@ -400,6 +401,7 @@ private struct iPhoneConnectionsView: View {
                     .padding(.vertical, AppSpacing.sm)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppColors.onEmphasis)
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity)

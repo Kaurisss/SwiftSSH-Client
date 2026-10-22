@@ -105,6 +105,7 @@ struct SnippetsView: View {
                     .padding(.vertical, AppSpacing.sm)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppColors.onEmphasis)
             .tint(AppColors.accent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -256,6 +257,7 @@ struct SnippetPickerView: View {
                     } actions: {
                         Button("Add Snippet") { showCreateSheet = true }
                             .buttonStyle(.borderedProminent)
+                            .foregroundStyle(AppColors.onEmphasis)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(AppColors.background)

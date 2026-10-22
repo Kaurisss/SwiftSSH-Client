@@ -38,6 +38,8 @@ struct TerminalSessionView: View {
 
                 HostKeyPromptView(
                     promptType: promptType,
+                    host: session.profile.host,
+                    port: session.profile.port,
                     onAccept: { session.acceptHostKey() },
                     onReject: { session.rejectHostKey() }
                 )
@@ -66,7 +68,9 @@ struct TerminalSessionView: View {
                             .foregroundStyle(AppColors.textPrimary)
                     }
                 }
-                .accessibilityLabel("Connection Details")
+                .accessibilityLabel(Text("Connection Details: \(session.title)"))
+                .accessibilityIdentifier("connection-details")
+                .accessibilityValue(session.isConnected ? String(localized: "Connected") : session.statusMessage)
                 .popover(isPresented: $showConnectionInfo) {
                     ConnectionInfoPopover(
                         session: session,

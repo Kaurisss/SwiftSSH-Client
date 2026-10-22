@@ -2,7 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var showClearDataAlert = false
 
@@ -53,230 +52,317 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Color Scheme", selection: $appearance) {
-                        ForEach(AppAppearance.allCases) { mode in
-                            Text(mode.title).tag(mode.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("appearance-picker")
-                } header: {
-                    Label("App Appearance", systemImage: "circle.lefthalf.filled")
-                }
-
-                // Terminal theme
-                Section {
-                    ForEach(TerminalTheme.allThemes, id: \.name) { theme in
-                        Button {
-                            themeName = theme.name
-                        } label: {
-                            HStack(spacing: AppSpacing.md) {
-                                ThemeSwatch(theme: theme)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(LocalizedStringKey(theme.name))
-                                        .font(.subheadline)
-                                        .foregroundStyle(AppColors.textPrimary)
-                                    Text("$ ssh root@host")
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(theme.foreground.opacity(0.85))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(theme.background)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                }
-                                Spacer()
-                                if themeName == theme.name {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(AppColors.accent)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } header: {
-                    Label("Terminal Theme", systemImage: "paintpalette")
-                } footer: {
-                    Text("The default terminal theme follows the app appearance. Other terminal themes can be selected separately.")
-                }
-
-                // Terminal
-                Section {
-                    Picker(selection: $fontFamily) {
-                        ForEach(AppPreferences.availableFontFamilies, id: \.self) { name in
-                            Text(LocalizedStringKey(name)).tag(name)
-                        }
+                    NavigationLink {
+                        appearanceSettings
                     } label: {
-                        Label("Font Family", systemImage: "textformat")
+                        Label("App Appearance", systemImage: "circle.lefthalf.filled")
                     }
+                    .accessibilityIdentifier("settings-appearance")
 
-                    HStack {
-                        Label("Font Size", systemImage: "textformat.size")
-                        Spacer()
-                        Stepper(value: $fontSize, in: AppPreferences.fontSizeRange) {
-                            Text("\(fontSize) pt")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(AppColors.accent)
-                                .frame(minWidth: 44, alignment: .trailing)
-                        }
-                    }
-
-                    Picker(selection: $cursorStyleRaw) {
-                        ForEach(AppPreferences.CursorStyle.allCases) { style in
-                            Text(style.displayName).tag(style.rawValue)
-                        }
+                    NavigationLink {
+                        terminalSettings
                     } label: {
-                        Label("Cursor", systemImage: "cursorarrow.click")
+                        Label("Terminal", systemImage: "terminal")
                     }
+                    .accessibilityIdentifier("settings-terminal")
 
-                    Toggle(isOn: $blinkCursor) {
-                        Label("Blink Cursor", systemImage: "cursorarrow.click.badge.clock")
+                    NavigationLink {
+                        securitySettings
+                    } label: {
+                        Label("Security", systemImage: "lock.shield")
                     }
-                    .tint(AppColors.accent)
-
-                    // Live preview
-                    HStack {
-                        Text("Preview")
-                            .foregroundStyle(AppColors.textSecondary)
-                        Spacer()
-                        Text("ssh root@host")
-                            .font(previewFont())
-                            .foregroundStyle(TerminalTheme.named(themeName).foreground)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(TerminalTheme.named(themeName).background)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    }
-                } header: {
-                    Label("Terminal", systemImage: "terminal")
+                    .accessibilityIdentifier("settings-security")
                 }
 
-                // Security
-                Section {
-                    Toggle(isOn: $biometricEnabled) {
-                        Label(biometricLabel, systemImage: biometricIcon)
-                    }
-                    .disabled(!biometricsAvailable)
-                    .tint(AppColors.accent)
-
-                    if biometricEnabled {
-                        Toggle(isOn: $lockOnBackground) {
-                            Label("Lock on Background", systemImage: "rectangle.portrait.and.arrow.forward")
-                        }
-                        .tint(AppColors.accent)
-                    }
-                } header: {
-                    Label("Security", systemImage: "lock.shield")
-                } footer: {
-                    if !biometricsAvailable {
-                        Text("Biometric authentication is not available on this device.")
-                    } else if biometricEnabled {
-                        Text(lockOnBackground
-                            ? String(localized: "Authentication required when opening the app and returning from background.")
-                            : String(localized: "Authentication required when opening the app."))
-                    }
-                }
-
-                Section {
-                    Label("Stored on this device", systemImage: "internaldrive")
-                } header: {
-                    Label("Storage", systemImage: "externaldrive")
-                } footer: {
-                    Text("App-managed cloud sync is disabled. Passwords and private keys stay in this device's Keychain.")
-                }
-
-                // SSH (Known Hosts, Snippets)
                 Section {
                     NavigationLink {
                         KnownHostsView()
                     } label: {
                         Label("Known Hosts", systemImage: "server.rack")
                     }
+                    .accessibilityIdentifier("settings-known-hosts")
+
                     NavigationLink {
                         SnippetsView()
                     } label: {
                         Label("Snippets", systemImage: "text.badge.plus")
                     }
+                    .accessibilityIdentifier("settings-snippets")
                 } header: {
                     Label("SSH", systemImage: "network")
                 }
 
-                // Data Management
                 Section {
-                    Button(role: .destructive) {
-                        showClearDataAlert = true
+                    NavigationLink {
+                        storageSettings
                     } label: {
-                        Label("Clear All Data", systemImage: "trash")
-                            .foregroundStyle(.red)
+                        Label("Storage", systemImage: "externaldrive")
                     }
-                } header: {
-                    Label("Data", systemImage: "externaldrive")
-                } footer: {
-                    Text("Removes all connections, keys, snippets, port forwards, and known hosts from this device.")
-                }
-                .alert("Clear All Data?", isPresented: $showClearDataAlert) {
-                    Button("Cancel", role: .cancel) {}
-                    Button("Clear Everything", role: .destructive) {
-                        clearAllData()
-                    }
-                } message: {
-                    Text("This will delete all connections, SSH keys, snippets, port forwards, and known hosts. This cannot be undone.")
-                }
+                    .accessibilityIdentifier("settings-storage")
 
-                // About
-                Section {
-                    HStack {
-                        Label("Version", systemImage: "info.circle")
-                        Spacer()
-                        Text(appVersion)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
+                    NavigationLink {
+                        aboutSettings
+                    } label: {
+                        Label("About", systemImage: "info.circle")
                     }
-                    HStack {
-                        Label("Build", systemImage: "hammer")
-                        Spacer()
-                        Text(appBuild)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                    HStack {
-                        Label("SSH Engine", systemImage: "shippingbox")
-                        Spacer()
-                        Text("Citadel")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                    HStack {
-                        Label("Terminal Engine", systemImage: "shippingbox")
-                        Spacer()
-                        Text("SwiftTerm")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                    HStack {
-                        Label("Based on", systemImage: "chevron.left.forwardslash.chevron.right")
-                        Spacer()
-                        Link("nirasnet/mssh", destination: URL(string: "https://github.com/nirasnet/mssh")!)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                } header: {
-                    Label("About", systemImage: "info.circle")
-                } footer: {
-                    Text("Built with Citadel (orlandos-nl) and SwiftTerm (migueldeicaza).")
+                    .accessibilityIdentifier("settings-about")
                 }
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
             .navigationTitle("Settings")
             .iOSOnlyNavigationBarTitleDisplayMode()
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
+        }
+        .appTheme()
+    }
+
+    private var appearanceSettings: some View {
+        Form {
+            Section {
+                Picker("Color Scheme", selection: $appearance) {
+                    ForEach(AppAppearance.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("appearance-picker")
+            } header: {
+                Label("App Appearance", systemImage: "circle.lefthalf.filled")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("App Appearance")
+        .iOSOnlyNavigationBarTitleDisplayMode()
+    }
+
+    private var terminalSettings: some View {
+        Form {
+            Section {
+                NavigationLink {
+                    terminalThemeSettings
+                } label: {
+                    Label("Terminal Theme", systemImage: "paintpalette")
+                }
+                .accessibilityIdentifier("settings-terminal-theme")
+            }
+
+            Section {
+                Picker(selection: $fontFamily) {
+                    ForEach(AppPreferences.availableFontFamilies, id: \.self) { name in
+                        Text(LocalizedStringKey(name)).tag(name)
+                    }
+                } label: {
+                    Label("Font Family", systemImage: "textformat")
+                }
+
+                HStack {
+                    Label("Font Size", systemImage: "textformat.size")
+                    Spacer()
+                    Stepper(value: $fontSize, in: AppPreferences.fontSizeRange) {
+                        Text("\(fontSize) pt")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(AppColors.accent)
+                            .frame(minWidth: 44, alignment: .trailing)
+                    }
+                }
+
+                Picker(selection: $cursorStyleRaw) {
+                    ForEach(AppPreferences.CursorStyle.allCases) { style in
+                        Text(style.displayName).tag(style.rawValue)
+                    }
+                } label: {
+                    Label("Cursor", systemImage: "cursorarrow.click")
+                }
+
+                Toggle(isOn: $blinkCursor) {
+                    Label("Blink Cursor", systemImage: "cursorarrow.click.badge.clock")
+                }
+                .tint(AppColors.accent)
+
+                // Live preview
+                HStack {
+                    Text("Preview")
+                        .foregroundStyle(AppColors.textSecondary)
+                    Spacer()
+                    Text("ssh root@host")
+                        .font(previewFont())
+                        .foregroundStyle(TerminalTheme.named(themeName).foreground)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(TerminalTheme.named(themeName).background)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+            } header: {
+                Label("Terminal", systemImage: "terminal")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("Terminal")
+        .iOSOnlyNavigationBarTitleDisplayMode()
+    }
+
+    private var terminalThemeSettings: some View {
+        Form {
+            Section {
+                ForEach(TerminalTheme.allThemes, id: \.name) { theme in
+                    Button {
+                        themeName = theme.name
+                    } label: {
+                        HStack(spacing: AppSpacing.md) {
+                            ThemeSwatch(theme: theme)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(LocalizedStringKey(theme.name))
+                                    .font(.subheadline)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text("$ ssh root@host")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(theme.foreground.opacity(0.85))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(theme.background)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            }
+                            Spacer()
+                            if themeName == theme.name {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(AppColors.accent)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                Label("Terminal Theme", systemImage: "paintpalette")
+            } footer: {
+                Text("The default terminal theme follows the app appearance. Other terminal themes can be selected separately.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("Terminal Theme")
+        .iOSOnlyNavigationBarTitleDisplayMode()
+    }
+
+    private var securitySettings: some View {
+        Form {
+            Section {
+                Toggle(isOn: $biometricEnabled) {
+                    Label(biometricLabel, systemImage: biometricIcon)
+                }
+                .disabled(!biometricsAvailable)
+                .tint(AppColors.accent)
+
+                if biometricEnabled {
+                    Toggle(isOn: $lockOnBackground) {
+                        Label("Lock on Background", systemImage: "rectangle.portrait.and.arrow.forward")
+                    }
+                    .tint(AppColors.accent)
+                }
+            } header: {
+                Label("Security", systemImage: "lock.shield")
+            } footer: {
+                if !biometricsAvailable {
+                    Text("Biometric authentication is not available on this device.")
+                } else if biometricEnabled {
+                    Text(lockOnBackground
+                        ? String(localized: "Authentication required when opening the app and returning from background.")
+                        : String(localized: "Authentication required when opening the app."))
                 }
             }
         }
-        .appTheme()
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("Security")
+        .iOSOnlyNavigationBarTitleDisplayMode()
+    }
+
+    private var storageSettings: some View {
+        Form {
+            Section {
+                Label("Stored on this device", systemImage: "internaldrive")
+            } header: {
+                Label("Storage", systemImage: "externaldrive")
+            } footer: {
+                Text("App-managed cloud sync is disabled. Passwords and private keys stay in this device's Keychain.")
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    showClearDataAlert = true
+                } label: {
+                    Label("Clear All Data", systemImage: "trash")
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Label("Data", systemImage: "externaldrive")
+            } footer: {
+                Text("Removes all connections, keys, snippets, port forwards, and known hosts from this device.")
+            }
+            .alert("Clear All Data?", isPresented: $showClearDataAlert) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear Everything", role: .destructive) {
+                    clearAllData()
+                }
+            } message: {
+                Text("This will delete all connections, SSH keys, snippets, port forwards, and known hosts. This cannot be undone.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("Storage")
+        .iOSOnlyNavigationBarTitleDisplayMode()
+    }
+
+    private var aboutSettings: some View {
+        Form {
+            Section {
+                HStack {
+                    Label("Version", systemImage: "info.circle")
+                    Spacer()
+                    Text(appVersion)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                HStack {
+                    Label("Build", systemImage: "hammer")
+                    Spacer()
+                    Text(appBuild)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                HStack {
+                    Label("SSH Engine", systemImage: "shippingbox")
+                    Spacer()
+                    Text("Citadel")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                HStack {
+                    Label("Terminal Engine", systemImage: "shippingbox")
+                    Spacer()
+                    Text("SwiftTerm")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                HStack {
+                    Label("Based on", systemImage: "chevron.left.forwardslash.chevron.right")
+                    Spacer()
+                    Link("nirasnet/mssh", destination: URL(string: "https://github.com/nirasnet/mssh")!)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+            } header: {
+                Label("About", systemImage: "info.circle")
+            } footer: {
+                Text("Built with Citadel (orlandos-nl) and SwiftTerm (migueldeicaza).")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppColors.background)
+        .navigationTitle("About")
+        .iOSOnlyNavigationBarTitleDisplayMode()
     }
 
     /// Resolved preview font that honors family + size, with a system fallback.

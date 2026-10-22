@@ -45,6 +45,20 @@ class InterfaceTests(unittest.TestCase):
             code = (ROOT / 'mssh/Views' / file).read_text(encoding='utf-8')
             self.assertIn('.frame(maxWidth: .infinity, maxHeight: .infinity)', code)
 
+    def test_settings_uses_hierarchical_navigation(self):
+        settings = (ROOT / 'mssh/Views/SettingsView.swift').read_text(encoding='utf-8')
+        index = settings.split('    private var appearanceSettings:', 1)[0]
+        self.assertEqual(settings.count('NavigationStack {'), 1)
+        self.assertNotIn('Picker(', index)
+        self.assertNotIn('Toggle(', index)
+        self.assertNotIn('Clear All Data', index)
+        self.assertNotIn('Button("Done")', settings)
+        for identifier in ('appearance', 'terminal', 'security', 'known-hosts',
+                           'snippets', 'storage', 'about'):
+            self.assertIn(f'.accessibilityIdentifier("settings-{identifier}")', index)
+        self.assertIn('.accessibilityIdentifier("settings-terminal-theme")', settings)
+        self.assertIn('.alert("Clear All Data?", isPresented: $showClearDataAlert)', settings)
+
     def test_generated_version_uses_project_build_settings(self):
         spec = (ROOT / 'project.yml').read_text(encoding='utf-8')
         self.assertIn('CFBundleShortVersionString: "$(MARKETING_VERSION)"', spec)

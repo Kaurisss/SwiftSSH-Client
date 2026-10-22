@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SFTPTransferView: View {
     let fileName: String
-    let progress: Double
     let transferType: SFTPViewModel.TransferType
 
     var body: some View {
@@ -10,7 +9,7 @@ struct SFTPTransferView: View {
             Image(systemName: transferType == .download ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(AppColors.accent)
-                .symbolEffect(.pulse, isActive: progress < 1.0)
+                .accessibilityHidden(true)
 
             Text(transferType == .download ? String(localized: "Downloading") : String(localized: "Uploading"))
                 .font(.system(.subheadline, design: .monospaced).weight(.medium))
@@ -19,18 +18,10 @@ struct SFTPTransferView: View {
             Text(fileName)
                 .font(AppFonts.monoCaption)
                 .foregroundStyle(AppColors.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .multilineTextAlignment(.center)
 
-            if progress < 1.0 {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(AppColors.accent)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(AppColors.connected)
-            }
+            ProgressView()
+                .tint(AppColors.accent)
         }
         .padding(AppSpacing.xl)
         .background(AppColors.surface)

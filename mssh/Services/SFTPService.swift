@@ -2,7 +2,17 @@ import Foundation
 import Citadel
 import NIO
 
-final class SFTPService: Sendable {
+protocol SFTPServicing: Sendable {
+    func listDirectory(path: String) async throws -> [SFTPFileItem]
+    func getHomePath() async throws -> String
+    func downloadFile(remotePath: String, localURL: URL) async throws
+    func uploadFile(localURL: URL, remotePath: String) async throws
+    func deleteFile(path: String) async throws
+    func deleteDirectory(path: String) async throws
+    func createDirectory(path: String) async throws
+}
+
+final class SFTPService: SFTPServicing {
     private let client: SSHClient
 
     init(client: SSHClient) {
@@ -18,7 +28,7 @@ final class SFTPService: Sendable {
                 for component in name.components {
                     let filename = component.filename
                     // Skip . and ..
-                    if filename == "." || filename == ".." {
+                    if !SFTPFileItem.isValidName(filename) {
                         continue
                     }
 
@@ -45,14 +55,6 @@ final class SFTPService: Sendable {
                 }
             }
 
-            // Sort: directories first, then alphabetically
-            items.sort { lhs, rhs in
-                if lhs.isDirectory != rhs.isDirectory {
-                    return lhs.isDirectory
-                }
-                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-
             return items
         }
     }
@@ -67,7 +69,7 @@ final class SFTPService: Sendable {
             }
 
             let bytes = data.data
-            try bytes.write(to: localURL)
+            try bytes.write(to: localURL, options: .atomic)
         }
     }
 
@@ -76,7 +78,8 @@ final class SFTPService: Sendable {
         try await client.withSFTP { sftp in
             try await sftp.withFile(
                 filePath: remotePath,
-                flags: [.write, .create, .truncate]
+                // Exclusive creation also protects files created after the directory was listed.
+                flags: [.write, .create, .forceCreate]
             ) { file in
                 let buffer = ByteBuffer(data: fileData)
                 try await file.write(buffer)

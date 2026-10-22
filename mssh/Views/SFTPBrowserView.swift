@@ -6,7 +6,11 @@ struct SFTPBrowserView: View {
     @Environment(\.dismiss) private var dismiss
 
     init(client: SSHClient) {
-        _viewModel = State(initialValue: SFTPViewModel(client: client))
+        self.init(viewModel: SFTPViewModel(client: client))
+    }
+
+    init(viewModel: SFTPViewModel) {
+        _viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {

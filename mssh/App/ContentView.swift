@@ -90,6 +90,8 @@ private struct iPhoneConnectionsView: View {
     /// rendered "New Connection" instead of the existing profile.
     @State private var editingProfile: ConnectionProfile?
     @State private var quickConnectText = ""
+    @State private var quickConnectTarget: QuickConnectTarget?
+    @State private var quickConnectError: String?
     @State private var showClearAlert = false
     @State private var showImportConfig = false
     @State private var searchText = ""
@@ -186,6 +188,18 @@ private struct iPhoneConnectionsView: View {
             .sheet(isPresented: $showImportConfig) {
                 SSHConfigImportView()
             }
+            .sheet(item: $quickConnectTarget) { target in
+                ConnectionFormView(target: target) { profile in
+                    quickConnectText = ""
+                    connect(to: profile)
+                }
+            }
+            .alert("Invalid Address", isPresented: .init(
+                get: { quickConnectError != nil },
+                set: { if !$0 { quickConnectError = nil } }
+            )) {
+                Button("Close", role: .cancel) { quickConnectError = nil }
+            } message: { Text(quickConnectError ?? "") }
         }
     }
 
@@ -216,7 +230,9 @@ private struct iPhoneConnectionsView: View {
                     Image(systemName: "arrow.right.circle.fill")
                         .font(.title3)
                         .foregroundStyle(AppColors.accent)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
+                .accessibilityLabel("Connect")
             }
         }
         .padding(.horizontal, AppSpacing.lg)
@@ -411,40 +427,21 @@ private struct iPhoneConnectionsView: View {
     }
 
     private func performQuickConnect() {
-        let text = quickConnectText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-
-        var username = "root"
-        var host = text
-        var port = 22
-
-        if let atIndex = text.firstIndex(of: "@") {
-            username = String(text[text.startIndex..<atIndex])
-            host = String(text[text.index(after: atIndex)...])
-        }
-        if let colonIndex = host.lastIndex(of: ":") {
-            let portString = String(host[host.index(after: colonIndex)...])
-            if let parsedPort = Int(portString), parsedPort > 0, parsedPort <= 65535 {
-                port = parsedPort
-                host = String(host[host.startIndex..<colonIndex])
+        do {
+            let target = try QuickConnectTarget(quickConnectText)
+            let existing = ConnectionListSorter.recencySorted(connections).first {
+                $0.host.caseInsensitiveCompare(target.host) == .orderedSame
+                    && $0.port == target.port && $0.username == target.username
             }
+            if let existing {
+                quickConnectText = ""
+                connect(to: existing)
+            } else {
+                quickConnectTarget = target
+            }
+        } catch {
+            quickConnectError = error.localizedDescription
         }
-
-        guard !host.isEmpty else { return }
-
-        let label = "\(username)@\(host)"
-        let profile = ConnectionProfile(
-            label: label,
-            host: host,
-            port: port,
-            username: username,
-            authType: .password
-        )
-        modelContext.insert(profile)
-        try? modelContext.save()
-
-        quickConnectText = ""
-        connect(to: profile)
     }
 }
 
@@ -459,6 +456,8 @@ private struct iPadConnectionsView: View {
     /// caused the form to render as "New Connection" on first edit).
     @State private var editingProfile: ConnectionProfile?
     @State private var quickConnectText = ""
+    @State private var quickConnectTarget: QuickConnectTarget?
+    @State private var quickConnectError: String?
     @State private var selectedProfile: ConnectionProfile?
     @State private var showClearAlert = false
     @State private var showImportConfig = false
@@ -491,6 +490,13 @@ private struct iPadConnectionsView: View {
                             #endif
                             .submitLabel(.go)
                             .onSubmit { performQuickConnect() }
+                        if !quickConnectText.isEmpty {
+                            Button(action: performQuickConnect) {
+                                Label("Connect", systemImage: "arrow.right.circle.fill")
+                                    .labelStyle(.iconOnly)
+                                    .frame(minWidth: 44, minHeight: 44)
+                            }
+                        }
                     }
                     .padding(.horizontal, AppSpacing.lg)
                     .frame(minHeight: 48)
@@ -641,6 +647,18 @@ private struct iPadConnectionsView: View {
             .sheet(isPresented: $showImportConfig) {
                 SSHConfigImportView()
             }
+            .sheet(item: $quickConnectTarget) { target in
+                ConnectionFormView(target: target) { profile in
+                    quickConnectText = ""
+                    connect(to: profile)
+                }
+            }
+            .alert("Invalid Address", isPresented: .init(
+                get: { quickConnectError != nil },
+                set: { if !$0 { quickConnectError = nil } }
+            )) {
+                Button("Close", role: .cancel) { quickConnectError = nil }
+            } message: { Text(quickConnectError ?? "") }
         } detail: {
             // Detail pane: show welcome or active terminal
             VStack(spacing: AppSpacing.lg) {
@@ -671,40 +689,21 @@ private struct iPadConnectionsView: View {
     }
 
     private func performQuickConnect() {
-        let text = quickConnectText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-
-        var username = "root"
-        var host = text
-        var port = 22
-
-        if let atIndex = text.firstIndex(of: "@") {
-            username = String(text[text.startIndex..<atIndex])
-            host = String(text[text.index(after: atIndex)...])
-        }
-        if let colonIndex = host.lastIndex(of: ":") {
-            let portString = String(host[host.index(after: colonIndex)...])
-            if let parsedPort = Int(portString), parsedPort > 0, parsedPort <= 65535 {
-                port = parsedPort
-                host = String(host[host.startIndex..<colonIndex])
+        do {
+            let target = try QuickConnectTarget(quickConnectText)
+            let existing = ConnectionListSorter.recencySorted(connections).first {
+                $0.host.caseInsensitiveCompare(target.host) == .orderedSame
+                    && $0.port == target.port && $0.username == target.username
             }
+            if let existing {
+                quickConnectText = ""
+                connect(to: existing)
+            } else {
+                quickConnectTarget = target
+            }
+        } catch {
+            quickConnectError = error.localizedDescription
         }
-
-        guard !host.isEmpty else { return }
-
-        let label = "\(username)@\(host)"
-        let profile = ConnectionProfile(
-            label: label,
-            host: host,
-            port: port,
-            username: username,
-            authType: .password
-        )
-        modelContext.insert(profile)
-        try? modelContext.save()
-
-        quickConnectText = ""
-        connect(to: profile)
     }
 }
 

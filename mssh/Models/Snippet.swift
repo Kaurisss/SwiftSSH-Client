@@ -28,4 +28,40 @@ final class Snippet {
         self.createdAt = Date()
         self.syncID = UUID().uuidString
     }
+
+    var displayLabel: String {
+        label.isEmpty ? String(localized: "Untitled") : label
+    }
+
+    static func filtered(_ snippets: [Snippet], query: String) -> [Snippet] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return snippets }
+        return snippets.filter {
+            $0.label.localizedStandardContains(query) || $0.command.localizedStandardContains(query)
+        }
+    }
+
+    static func save(_ existing: Snippet?, label: String, command: String, in context: ModelContext) throws {
+        guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError.emptyCommand
+        }
+        let target = existing ?? Snippet(label: "", command: "")
+        let previous = (target.label, target.command)
+        target.label = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.command = command
+        if existing == nil { context.insert(target) }
+        do {
+            try context.save()
+        } catch {
+            (target.label, target.command) = previous
+            if existing == nil { context.delete(target) }
+            throw error
+        }
+    }
+
+    enum ValidationError: LocalizedError {
+        case emptyCommand
+
+        var errorDescription: String? { String(localized: "Enter a command before saving.") }
+    }
 }

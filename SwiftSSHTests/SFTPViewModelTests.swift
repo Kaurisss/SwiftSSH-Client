@@ -1,4 +1,6 @@
 import Foundation
+import SwiftUI
+import UIKit
 import XCTest
 @testable import SwiftSSH
 
@@ -176,6 +178,43 @@ final class SFTPViewModelTests: XCTestCase {
                        [newer, older, unknown])
         XCTAssertEqual([item("z"), item("a", size: 0)].sorted(by: SFTPFileItem.SortOrder.size.precedes).map(\.name),
                        ["a", "z"])
+    }
+
+    func testFileBrowserRendersAtNarrowWidthAndLargeText() async throws {
+        let service = TestSFTPService()
+        await service.setDirectory("/home", items: [
+            item("project-with-a-long-name", directory: true),
+            item("production-configuration-backup-2026-10-23.json", size: 4096,
+                 modified: Date(timeIntervalSince1970: 1792689687)),
+            item(".env", size: 128)
+        ])
+        let model = SFTPViewModel(service: service)
+        await model.loadInitialDirectory()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 320, height: 740)
+        defer { window.isHidden = true }
+        for (name, size, scheme) in [("Files-Narrow-Light", DynamicTypeSize.large, ColorScheme.light),
+                                     ("Files-Large-Text-Dark", .accessibility3, .dark)] {
+            let root = SFTPBrowserView(viewModel: model)
+                .environment(\.locale, Locale(identifier: "zh_Hans"))
+                .environment(\.dynamicTypeSize, size)
+                .preferredColorScheme(scheme)
+            let host = UIHostingController(rootView: root)
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(300))
+            let image = UIGraphicsImageRenderer(bounds: host.view.bounds).image { _ in
+                host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertFalse(model.isBusy)
+            XCTAssertEqual(model.visibleFiles.count, 2)
+        }
     }
 
     private func item(_ name: String, directory: Bool = false, size: UInt64? = nil,

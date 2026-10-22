@@ -8,18 +8,7 @@ enum KeychainService {
 
     static func savePassword(for profileID: String, password: String) throws {
         guard let data = password.data(using: .utf8) else { return }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: "pwd-\(profileID)",
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
-        }
+        try save(account: "pwd-\(profileID)", data: data)
     }
 
     static func getPassword(for profileID: String) -> String? {
@@ -39,18 +28,7 @@ enum KeychainService {
     // MARK: - Private Keys (device-only, never synced)
 
     static func savePrivateKey(id: String, pemData: Data) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: "key-\(id)",
-            kSecValueData as String: pemData,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.saveFailed(status)
-        }
+        try save(account: "key-\(id)", data: pemData)
     }
 
     static func getPrivateKey(id: String) -> Data? {
@@ -83,15 +61,26 @@ enum KeychainService {
 
     static func saveHostKey(host: String, port: Int, keyData: Data) throws {
         let account = "hostkey-\(host):\(port)"
+        try save(account: account, data: keyData)
+    }
+
+    private static func save(account: String, data: Data) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
             kSecAttrAccount as String: account,
-            kSecValueData as String: keyData,
+            kSecAttrSynchronizable as String: false
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-        SecItemDelete(query as CFDictionary)
-        let status = SecItemAdd(query as CFDictionary, nil)
+        // Updating preserves the old credential if the Keychain refuses the write.
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            let item = query.merging(attributes) { _, new in new }
+            status = SecItemAdd(item as CFDictionary, nil)
+        }
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }

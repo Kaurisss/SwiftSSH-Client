@@ -9,6 +9,7 @@ struct ConnectionFormView: View {
     @Query private var allConnections: [ConnectionProfile]
 
     let existingProfile: ConnectionProfile?
+    private let onConnect: ((ConnectionProfile) -> Void)?
 
     @State private var label = ""
     @State private var host = ""
@@ -20,6 +21,7 @@ struct ConnectionFormView: View {
     @State private var portValidationError: String?
     @State private var isTestingConnection = false
     @State private var testResult: ConnectionTestResult?
+    @State private var saveError: String?
 
     // Organization fields (US-002)
     @State private var isFavorite: Bool = false
@@ -34,15 +36,25 @@ struct ConnectionFormView: View {
 
     init(existingProfile: ConnectionProfile? = nil) {
         self.existingProfile = existingProfile
+        onConnect = nil
+    }
+
+    init(target: QuickConnectTarget, onConnect: @escaping (ConnectionProfile) -> Void) {
+        existingProfile = nil
+        self.onConnect = onConnect
+        _host = State(initialValue: target.host)
+        _port = State(initialValue: String(target.port))
+        _username = State(initialValue: target.username)
     }
 
     private var parsedPort: Int? {
-        guard let p = Int(port), p >= 1, p <= 65535 else { return nil }
+        guard let p = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)), p >= 1, p <= 65535 else { return nil }
         return p
     }
 
     private var isFormValid: Bool {
-        !host.isEmpty && !username.isEmpty && parsedPort != nil
+        !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && parsedPort != nil
     }
 
     var body: some View {
@@ -88,6 +100,8 @@ struct ConnectionFormView: View {
                     if authType == .password {
                         SecureField("Password", text: $password)
                             .font(.system(.body, design: .monospaced))
+                            .textContentType(.password)
+                            .accessibilityIdentifier("connection-password")
                     } else {
                         Picker("Key", selection: $selectedKeyID) {
                             Text("Select a key...").tag(String?.none)
@@ -227,21 +241,26 @@ struct ConnectionFormView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
-            .navigationTitle(existingProfile == nil ? String(localized: "New Connection") : String(localized: "Edit Connection"))
+            .navigationTitle(onConnect != nil ? String(localized: "Quick Connect") :
+                             existingProfile == nil ? String(localized: "New Connection") : String(localized: "Edit Connection"))
             .iOSOnlyNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(onConnect == nil ? String(localized: "Save") : String(localized: "Save and Connect")) {
                         save()
-                        dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(!isFormValid)
+                    .accessibilityIdentifier("connection-save")
                 }
             }
+            .alert("Unable to Save Connection", isPresented: .init(
+                get: { saveError != nil }, set: { if !$0 { saveError = nil } }
+            )) {
+                Button("Close", role: .cancel) { saveError = nil }
+            } message: { Text(saveError ?? "") }
             .onAppear {
                 if let p = existingProfile {
                     label = p.label
@@ -416,23 +435,39 @@ struct ConnectionFormView: View {
     }
 
     private func save() {
-        let portInt = parsedPort ?? 22
-        let effectiveLabel = label.isEmpty ? "\(username)@\(host)" : label
+        guard isFormValid, let portInt = parsedPort else {
+            saveError = ConnectionSaveError.invalidEndpoint.localizedDescription
+            return
+        }
+        if authType == .key && !keys.contains(where: { $0.syncID == selectedKeyID }) {
+            saveError = ConnectionSaveError.missingKey.localizedDescription
+            return
+        }
+        let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveLabel = trimmedLabel.isEmpty ? "\(username)@\(host)" : trimmedLabel
         let trimmedGroup = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
-        viewModel.saveConnection(
-            profile: existingProfile,
-            label: effectiveLabel,
-            host: host,
-            port: portInt,
-            username: username,
-            authType: authType,
-            password: authType == .password ? password : nil,
-            keyID: authType == .key ? selectedKeyID : nil,
-            isFavorite: isFavorite,
-            groupName: trimmedGroup.isEmpty ? nil : trimmedGroup,
-            colorTag: colorTag,
-            modelContext: modelContext
-        )
+        do {
+            let saved = try viewModel.saveConnection(
+                profile: existingProfile,
+                label: effectiveLabel,
+                host: host,
+                port: portInt,
+                username: username,
+                authType: authType,
+                password: authType == .password ? password : nil,
+                keyID: authType == .key ? selectedKeyID : nil,
+                isFavorite: isFavorite,
+                groupName: trimmedGroup.isEmpty ? nil : trimmedGroup,
+                colorTag: colorTag,
+                modelContext: modelContext
+            )
+            dismiss()
+            onConnect?(saved)
+        } catch {
+            saveError = String(localized: "Save failed. Your draft has been kept; try again. \(error.localizedDescription)")
+        }
     }
 }
 

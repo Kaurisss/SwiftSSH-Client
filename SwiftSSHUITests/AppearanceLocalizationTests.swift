@@ -119,6 +119,67 @@ final class AppearanceLocalizationTests: XCTestCase {
     }
 
     @MainActor
+    func testQuickConnectValidatesAddressAndCollectsCredentialsBeforeSaving() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        let quick = app.textFields["quick-connect"]
+        XCTAssertTrue(quick.waitForExistence(timeout: 15))
+        quick.tap()
+        quick.typeText("fixture@host:70000\n")
+        let error = app.alerts["地址无效"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        error.buttons["关闭"].tap()
+        XCTAssertEqual(quick.value as? String, "fixture@host:70000")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(quick.waitForExistence(timeout: 15))
+        quick.tap()
+        quick.typeText("fixture@[2001:db8::1]:2222\n")
+        XCTAssertTrue(app.navigationBars["快速连接"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.secureTextFields["connection-password"].exists)
+        XCTAssertTrue(app.buttons["connection-save"].exists)
+        capture("Chinese-Quick-Connect-Authentication")
+        app.buttons["取消"].tap()
+        XCTAssertTrue(quick.waitForExistence(timeout: 5))
+        XCTAssertEqual(quick.value as? String, "fixture@[2001:db8::1]:2222")
+    }
+
+    @MainActor
+    func testSnippetEditorPreservesCommandNewlineAndValidatesEmptyInput() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["settings-snippets"].tap()
+        app.buttons["snippet-add"].tap()
+        app.buttons["snippet-save"].tap()
+        XCTAssertTrue(app.alerts["无法保存命令"].waitForExistence(timeout: 5))
+        app.alerts.buttons["关闭"].tap()
+        let name = "Fixture-\(UUID().uuidString.prefix(6))"
+        let label = app.textFields["snippet-label"]
+        label.tap()
+        label.typeText(name)
+        let editor = app.textViews["snippet-command"]
+        editor.tap()
+        editor.typeText("printf 'hello'\n")
+        app.buttons["snippet-save"].tap()
+        let saved = app.buttons.containing(.staticText, identifier: name).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        saved.tap()
+        XCTAssertEqual(editor.value as? String, "printf 'hello'\n")
+        capture("Chinese-Snippet-Editor")
+        app.buttons["取消"].tap()
+        saved.swipeLeft()
+        app.buttons["删除"].tap()
+        app.buttons["取消"].tap()
+        XCTAssertTrue(saved.exists)
+    }
+
+    @MainActor
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

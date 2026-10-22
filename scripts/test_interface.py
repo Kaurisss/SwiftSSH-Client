@@ -59,6 +59,35 @@ class InterfaceTests(unittest.TestCase):
         self.assertIn('.accessibilityIdentifier("settings-terminal-theme")', settings)
         self.assertIn('.alert("Clear All Data?", isPresented: $showClearDataAlert)', settings)
 
+    def test_key_import_is_source_first_and_keeps_batch_entry(self):
+        view = (ROOT / 'mssh/Views/KeyImportView.swift').read_text(encoding='utf-8')
+        manager = (ROOT / 'mssh/Views/KeyManagerView.swift').read_text(encoding='utf-8')
+        for identifier in ('files', 'paste', 'name', 'private-key', 'save'):
+            self.assertIn(f'.accessibilityIdentifier("key-import-{identifier}")', view)
+        self.assertIn('if selectedSource == .clipboard', view)
+        self.assertIn('if selectedSource == .files', view)
+        self.assertIn('if selectedSource != nil', view)
+        self.assertIn('try validateKey(text)', view)
+        self.assertIn('try validateKey(pemText)', view)
+        self.assertIn('try KeyManagementService.importKey(', view)
+        self.assertIn('KeyImportView()', manager)
+        self.assertIn('KeyImportWizardView()', manager)
+        empty_state = manager.split('private var emptyState:', 1)[1].split('// MARK: - Key List', 1)[0]
+        self.assertIn('showImportSheet = true', empty_state)
+        self.assertNotIn('showImportWizard = true', empty_state)
+
+    def test_key_import_preview_has_no_discarded_variant_harness(self):
+        html = (ROOT / 'design/key-import/index.html').read_text(encoding='utf-8')
+        for discarded in ('__variant', 'variant-picker', 'renderInline', 'renderGuided',
+                          '分步确认', '直填表单'):
+            self.assertNotIn(discarded, html)
+        self.assertIn("connect-src 'none'", html)
+        self.assertIn("form-action 'none'", html)
+        for source in ('file', 'paste'):
+            self.assertIn(f'data-source="{source}"', html)
+        for persistence in ('localStorage', 'sessionStorage', 'navigator.clipboard', 'fetch('):
+            self.assertNotIn(persistence, html)
+
     def test_generated_version_uses_project_build_settings(self):
         spec = (ROOT / 'project.yml').read_text(encoding='utf-8')
         self.assertIn('CFBundleShortVersionString: "$(MARKETING_VERSION)"', spec)

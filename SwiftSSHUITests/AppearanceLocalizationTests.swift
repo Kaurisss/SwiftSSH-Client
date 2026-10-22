@@ -86,6 +86,39 @@ final class AppearanceLocalizationTests: XCTestCase {
     }
 
     @MainActor
+    func testKeyImportChoosesSourceBeforeShowingInputs() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["密钥"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["密钥"].tap()
+        app.buttons["导入已有密钥"].tap()
+
+        XCTAssertTrue(app.buttons["key-import-files"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["key-import-paste"].exists)
+        XCTAssertFalse(app.textFields["key-import-name"].exists)
+        XCTAssertFalse(app.textViews["key-import-private-key"].exists)
+        capture("Chinese-Key-Import-Sources")
+
+        app.buttons["key-import-paste"].tap()
+        let editor = app.textViews["key-import-private-key"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["key-import-name"].exists)
+        editor.tap()
+        editor.typeText("not-a-private-key")
+        app.buttons["key-import-save"].tap()
+
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "请选择未加密")
+        ).firstMatch.exists)
+        alert.buttons.firstMatch.tap()
+        XCTAssertEqual(editor.value as? String, "not-a-private-key")
+    }
+
+    @MainActor
     private func capture(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

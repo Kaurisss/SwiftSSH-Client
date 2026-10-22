@@ -1,6 +1,13 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Choose an unencrypted SSH private key and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Choose an unencrypted SSH private key and try again." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请选择未加密的 SSH 私钥，然后重试。" } }
+      }
+    },
     "About": {
       "extractionState": "manual",
       "localizations": {

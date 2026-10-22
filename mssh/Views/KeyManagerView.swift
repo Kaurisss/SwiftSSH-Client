@@ -38,7 +38,7 @@ struct KeyManagerView: View {
                         Button {
                             showImportSheet = true
                         } label: {
-                            Label("Paste Key", systemImage: "doc.on.clipboard")
+                            Label("Import Existing Key", systemImage: "square.and.arrow.down")
                         }
                         Button {
                             showImportWizard = true
@@ -61,7 +61,7 @@ struct KeyManagerView: View {
             GenerateKeySheet(viewModel: viewModel)
         }
         .sheet(isPresented: $showImportSheet) {
-            KeyImportView(viewModel: viewModel)
+            KeyImportView()
         }
         .sheet(isPresented: $showImportWizard) {
             KeyImportWizardView()
@@ -134,7 +134,7 @@ struct KeyManagerView: View {
                 .buttonStyle(.borderedProminent)
 
                 Button {
-                    showImportWizard = true
+                    showImportSheet = true
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down")

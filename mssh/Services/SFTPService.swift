@@ -60,29 +60,64 @@ final class SFTPService: SFTPServicing {
     }
 
     func downloadFile(remotePath: String, localURL: URL) async throws {
+        let temporary = localURL.deletingLastPathComponent().appendingPathComponent(".SwiftSSH-\(UUID().uuidString)")
+        try Data().write(to: temporary, options: .withoutOverwriting)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let output = try FileHandle(forWritingTo: temporary)
+        defer { try? output.close() }
         try await client.withSFTP { sftp in
-            let data = try await sftp.withFile(
+            try await sftp.withFile(
                 filePath: remotePath,
                 flags: .read
             ) { file in
-                try await file.readAll()
+                let expectedSize = try await file.readAttributes().size
+                var offset: UInt64 = 0
+                while true {
+                    try Task.checkCancellation()
+                    if let expectedSize, offset >= expectedSize { break }
+                    let length = UInt32(min(32_000, expectedSize.map { $0 - offset } ?? 32_000))
+                    let chunk = try await file.read(from: offset, length: length)
+                    guard chunk.readableBytes > 0 else {
+                        if let expectedSize, offset < expectedSize { throw SFTPTransferError.incompleteDownload }
+                        break
+                    }
+                    try output.write(contentsOf: chunk.data)
+                    offset += UInt64(chunk.readableBytes)
+                }
             }
-
-            let bytes = data.data
-            try bytes.write(to: localURL, options: .atomic)
+        }
+        try output.close()
+        try Task.checkCancellation()
+        if FileManager.default.fileExists(atPath: localURL.path) {
+            _ = try FileManager.default.replaceItemAt(localURL, withItemAt: temporary)
+        } else {
+            try FileManager.default.moveItem(at: temporary, to: localURL)
         }
     }
 
     func uploadFile(localURL: URL, remotePath: String) async throws {
-        let fileData = try Data(contentsOf: localURL)
+        let input = try FileHandle(forReadingFrom: localURL)
+        defer { try? input.close() }
         try await client.withSFTP { sftp in
             try await sftp.withFile(
                 filePath: remotePath,
                 // Exclusive creation also protects files created after the directory was listed.
                 flags: [.write, .create, .forceCreate]
             ) { file in
-                let buffer = ByteBuffer(data: fileData)
-                try await file.write(buffer)
+                do {
+                    var offset: UInt64 = 0
+                    while true {
+                        try Task.checkCancellation()
+                        guard let data = try input.read(upToCount: 32_000), !data.isEmpty else { break }
+                        try await file.write(ByteBuffer(data: data), at: offset)
+                        offset += UInt64(data.count)
+                    }
+                } catch {
+                    // Only this exclusively created file can be removed on failure.
+                    try? await file.close()
+                    try? await sftp.remove(at: remotePath)
+                    throw error
+                }
             }
         }
     }
@@ -117,5 +152,13 @@ final class SFTPService: SFTPServicing {
         guard let permissions else { return false }
         // S_IFDIR = 0o040000 on POSIX
         return (permissions & 0o170000) == 0o040000
+    }
+}
+
+enum SFTPTransferError: LocalizedError {
+    case incompleteDownload
+
+    var errorDescription: String? {
+        String(localized: "The remote file became shorter during download. Try again.")
     }
 }

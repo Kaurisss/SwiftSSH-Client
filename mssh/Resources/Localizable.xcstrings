@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The remote file became shorter during download. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The remote file became shorter during download. Try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载期间远程文件变短，请重试。"
+          }
+        }
+      }
+    },
     "Reconnect": {
       "extractionState": "manual",
       "localizations": {

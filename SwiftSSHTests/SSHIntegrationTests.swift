@@ -38,8 +38,22 @@ final class SSHIntegrationTests: XCTestCase {
             } catch {}
 
             let destination = local.appendingPathComponent("download.bin")
+            try Data("old local content".utf8).write(to: destination)
             try await sftp.downloadFile(remotePath: remote, localURL: destination)
             XCTAssertEqual(try Data(contentsOf: destination), expected)
+            do {
+                try await sftp.downloadFile(remotePath: directory + "/missing", localURL: destination)
+                XCTFail("Missing files must fail without replacing the local destination")
+            } catch {}
+            XCTAssertEqual(try Data(contentsOf: destination), expected)
+            XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: local.path)
+                .contains { $0.hasPrefix(".SwiftSSH-") }, "Failed downloads must clean up staging files")
+            let empty = directory + "/empty"
+            try Data().write(to: source)
+            try await sftp.uploadFile(localURL: source, remotePath: empty)
+            try await sftp.downloadFile(remotePath: empty, localURL: destination)
+            XCTAssertEqual(try Data(contentsOf: destination), Data())
+            try await sftp.deleteFile(path: empty)
             let items = try await sftp.listDirectory(path: directory)
             let item = try XCTUnwrap(items.first(where: { $0.name == "空 格.bin" }))
             XCTAssertEqual(item.size, UInt64(expected.count))

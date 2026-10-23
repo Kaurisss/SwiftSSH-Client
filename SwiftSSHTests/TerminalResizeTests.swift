@@ -10,7 +10,7 @@ final class TerminalResizeTests: XCTestCase {
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         let controller = UIViewController()
-        let terminal = TerminalViewWrapper.makeTerminalView()
+        let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
         terminal.frame = CGRect(x: 0, y: 0, width: 320, height: 520)
         controller.view.addSubview(terminal)
         window.rootViewController = controller
@@ -27,7 +27,6 @@ final class TerminalResizeTests: XCTestCase {
         terminal.contentMode = .scaleToFill
         terminal.layer.contentsGravity = .resize
         terminal.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
-        terminal.nativeBackgroundColor = .white
         terminal.nativeForegroundColor = .red
         terminal.feed(text: "\u{1B}[?25l\u{1B}[2J\u{1B}[HHHHH")
         terminal.layoutIfNeeded()
@@ -97,6 +96,11 @@ final class TerminalResizeTests: XCTestCase {
                 bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        for y in [0, height - 1] {
+            let offset = (y * width + width - 1) * 4
+            XCTAssertTrue(pixels[offset..<(offset + 4)].allSatisfy { $0 >= 250 },
+                          "Newly exposed viewport space must keep the terminal background during resizing.")
         }
         var bounds = CGRect.null
         for y in 0..<height {

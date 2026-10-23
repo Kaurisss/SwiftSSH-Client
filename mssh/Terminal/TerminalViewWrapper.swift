@@ -52,9 +52,8 @@ struct TerminalViewWrapper: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TerminalView {
         context.coordinator.wantsFocus = isFocused
-        let terminal = Self.makeTerminalView()
+        let terminal = Self.makeTerminalView(backgroundColor: resolvedColor(theme.background))
         terminal.terminalDelegate = context.coordinator
-        terminal.nativeBackgroundColor = resolvedColor(theme.background)
         terminal.nativeForegroundColor = resolvedColor(theme.foreground)
         terminal.font = resolvedFont
         terminal.inputAccessoryView = TerminalAccessoryBar(terminal: terminal)
@@ -69,8 +68,10 @@ struct TerminalViewWrapper: UIViewRepresentable {
         return terminal
     }
 
-    static func makeTerminalView() -> TerminalView {
+    static func makeTerminalView(backgroundColor: UIColor) -> TerminalView {
         let terminal = TerminalView()
+        terminal.nativeBackgroundColor = backgroundColor
+        terminal.backgroundColor = backgroundColor
         // Redraw at the new size; keep cached glyphs unscaled during the keyboard animation.
         terminal.contentMode = .topLeft
         terminal.layer.needsDisplayOnBoundsChange = true
@@ -80,6 +81,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
     func updateUIView(_ uiView: TerminalView, context: Context) {
         context.coordinator.wantsFocus = isFocused
         uiView.nativeBackgroundColor = resolvedColor(theme.background)
+        uiView.backgroundColor = uiView.nativeBackgroundColor
         uiView.nativeForegroundColor = resolvedColor(theme.foreground)
 
         let target = resolvedFont

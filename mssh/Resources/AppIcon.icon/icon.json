@@ -1,7 +1,4 @@
 {
-  "features": [
-    "specular-location"
-  ],
   "groups": [
     {
       "blend-mode": "normal",
@@ -50,7 +47,7 @@
         "kind": "neutral",
         "opacity": 0.7
       },
-      "specular": "outside",
+      "specular": true,
       "refractivity-specializations": [
         {
           "value": {

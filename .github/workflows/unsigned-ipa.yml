@@ -96,6 +96,15 @@ jobs:
           python3 -m unittest discover -s project/scripts -p test_local_sign_install.py -v
           xcodegen generate
 
+      - name: Compile app icon
+        run: |
+          mkdir -p build/icon-check
+          xcrun actool mssh/Resources/AppIcon.icon \
+            --compile build/icon-check \
+            --platform iphoneos --minimum-deployment-target 18.0 \
+            --app-icon AppIcon --target-device iphone --target-device ipad \
+            --output-partial-info-plist build/icon-check.plist
+
       - name: Verify Chinese and appearance in simulator
         if: inputs.run_tests
         run: |

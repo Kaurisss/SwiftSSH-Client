@@ -23,6 +23,7 @@ final class TerminalResizeTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         let configuredMode = terminal.contentMode
         let configuredGravity = terminal.layer.contentsGravity
+        let configuredRedraw = terminal.layer.needsDisplayOnBoundsChange
         terminal.contentMode = .scaleToFill
         terminal.layer.contentsGravity = .resize
         terminal.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
@@ -40,6 +41,7 @@ final class TerminalResizeTests: XCTestCase {
                              "The control must reproduce the cached-bitmap stretching.")
         terminal.contentMode = configuredMode
         terminal.layer.contentsGravity = configuredGravity
+        terminal.layer.needsDisplayOnBoundsChange = configuredRedraw
 
         for height in [CGFloat(520), 260, 520, 260] {
             let resized = try await glyphsDuringResize(terminal, toHeight: height)

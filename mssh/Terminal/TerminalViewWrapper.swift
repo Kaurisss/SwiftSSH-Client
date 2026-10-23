@@ -72,8 +72,8 @@ struct TerminalViewWrapper: UIViewRepresentable {
     static func makeTerminalView() -> TerminalView {
         let terminal = TerminalView()
         // Redraw at the new size; keep cached glyphs unscaled during the keyboard animation.
-        terminal.contentMode = .redraw
-        terminal.layer.contentsGravity = .topLeft
+        terminal.contentMode = .topLeft
+        terminal.layer.needsDisplayOnBoundsChange = true
         return terminal
     }
 

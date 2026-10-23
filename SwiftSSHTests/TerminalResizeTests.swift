@@ -10,6 +10,7 @@ final class TerminalResizeTests: XCTestCase {
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         let controller = UIViewController()
+        controller.view.backgroundColor = .white
         let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
         terminal.frame = CGRect(x: 0, y: 0, width: 320, height: 520)
         controller.view.addSubview(terminal)
@@ -82,6 +83,9 @@ final class TerminalResizeTests: XCTestCase {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let image = UIGraphicsImageRenderer(size: layer.bounds.size, format: format).image { context in
+            // Composite transparent cached-layer space over the fixture's white parent.
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: layer.bounds.size))
             layer.render(in: context.cgContext)
         }
         let attachment = XCTAttachment(image: image)

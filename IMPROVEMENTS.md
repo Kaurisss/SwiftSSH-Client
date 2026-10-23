@@ -177,3 +177,4 @@
 - 根据 [GitHub 官方镜像清单](https://github.com/actions/runner-images/blob/main/README.md) 改用现已能分配的 `macos-26` ARM 运行器，保留 Xcode 26.6；构建期限扩为 90 分钟，让慢运行能完整返回验证与归档结果。
 - 当前验证：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39943264046>，提交 `c3043a0`；替代使用旧 fixture 的 `39942350496`。
 - `c3043a0` 的完整模拟器验证通过，键盘展开/收起及 SFTP 截图已检查。动画附件额外发现缓存之外的区域沿用 SwiftTerm 初始黑底；同步 UIKit 背景与终端主题，并在同一像素回归中检查新露出的区域颜色。
+- `8ed9309` 的全部 7 项 UI 测试通过；新增背景断言失败。检查 PNG 的 RGBA 后确认缓存以外为透明像素（alpha 为 0），并非不透明黑色。测试截图按实际白色父容器合成透明区域，保留字形与不透明背景的像素检查；UIKit 背景继续同步当前终端主题。

@@ -126,8 +126,6 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("appearance-picker")
-            } header: {
-                Label("App Appearance", systemImage: "circle.lefthalf.filled")
             }
         }
         .scrollContentBackground(.hidden)
@@ -233,8 +231,6 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            } header: {
-                Label("Terminal Theme", systemImage: "paintpalette")
             } footer: {
                 Text("The default terminal theme follows the app appearance. Other terminal themes can be selected separately.")
             }
@@ -260,8 +256,6 @@ struct SettingsView: View {
                     }
                     .tint(AppColors.accent)
                 }
-            } header: {
-                Label("Security", systemImage: "lock.shield")
             } footer: {
                 if !biometricsAvailable {
                     Text("Biometric authentication is not available on this device.")
@@ -353,8 +347,6 @@ struct SettingsView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(AppColors.textSecondary)
                 }
-            } header: {
-                Label("About", systemImage: "info.circle")
             } footer: {
                 Text("Built with Citadel (orlandos-nl) and SwiftTerm (migueldeicaza).")
             }

@@ -116,12 +116,9 @@ struct AppSectionHeader: View {
                 .foregroundStyle(AppColors.textSecondary)
             if let count {
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.accent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(AppColors.accentDim)
-                    .clipShape(Capsule())
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(AppColors.textSecondary)
             }
             Spacer()
         }
@@ -138,7 +135,6 @@ struct StatusDot: View {
         Circle()
             .fill(isConnected ? AppColors.connected : AppColors.textTertiary)
             .frame(width: 8, height: 8)
-            .shadow(color: isConnected ? AppColors.connected.opacity(0.5) : .clear, radius: 4)
     }
 }
 

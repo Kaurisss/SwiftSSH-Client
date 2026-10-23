@@ -365,12 +365,9 @@ private struct iPhoneConnectionsView: View {
                 .foregroundStyle(AppColors.textSecondary)
             if let count {
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.accent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(AppColors.accentDim)
-                    .clipShape(Capsule())
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(AppColors.textSecondary)
             }
             Spacer()
         }
@@ -387,10 +384,6 @@ private struct iPhoneConnectionsView: View {
             Text("No Saved Connections")
                 .font(AppFonts.subheading)
                 .foregroundStyle(AppColors.textSecondary)
-
-            Text("Add a connection or use Quick Connect")
-                .font(.caption)
-                .foregroundStyle(AppColors.textTertiary)
 
             Button {
                 showAddConnection = true
@@ -675,9 +668,6 @@ private struct iPadConnectionsView: View {
                 Text("Select a connection to get started")
                     .font(AppFonts.subheading)
                     .foregroundStyle(AppColors.textSecondary)
-                Text("Or use Quick Connect in the sidebar")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textTertiary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppColors.background)
@@ -746,14 +736,11 @@ struct ConnectionRow: View {
             }
 
             // Server icon
-            ZStack {
-                AppShape.container
-                    .fill(AppColors.accentDim)
-                    .frame(width: 36, height: 36)
-                Image(systemName: "server.rack")
-                    .font(.system(size: 14))
-                    .foregroundStyle(AppColors.accent)
-            }
+            Image(systemName: "server.rack")
+                .font(.body)
+                .foregroundStyle(AppColors.textSecondary)
+                .frame(width: 24)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -763,12 +750,8 @@ struct ConnectionRow: View {
                         .lineLimit(1)
                     if let group = profile.groupName, !group.isEmpty {
                         Text(group)
-                            .font(.system(size: 9, weight: .medium))
+                            .font(.caption)
                             .foregroundStyle(AppColors.textTertiary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(AppColors.surfaceElevated)
-                            .clipShape(Capsule())
                     }
                 }
 
@@ -792,6 +775,7 @@ struct ConnectionRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(profile.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"))
 
             VStack(alignment: .trailing, spacing: 2) {
                 if let lastConnected = profile.lastConnectedAt {

@@ -24,35 +24,22 @@ struct LockScreenView: View {
 
     var body: some View {
         ZStack {
-            // Dark background
             AppColors.background
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.xxl) {
                 Spacer()
 
-                // App icon area
                 VStack(spacing: AppSpacing.lg) {
-                    ZStack {
-                        Circle()
-                            .fill(AppColors.surface)
-                            .frame(width: 88, height: 88)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(AppColors.border, lineWidth: 0.5)
-                            )
-                        Image(systemName: "terminal.fill")
-                            .font(.system(size: 36))
-                            .foregroundStyle(AppColors.accent)
-                    }
+                    Image(systemName: "lock")
+                        .font(.largeTitle)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .accessibilityHidden(true)
 
                     Text("SwiftSSH")
                         .font(.system(size: 28, weight: .bold, design: .monospaced))
                         .foregroundStyle(AppColors.textPrimary)
 
-                    Text("Authentication Required")
-                        .font(.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
                 }
 
                 Spacer()

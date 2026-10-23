@@ -23,7 +23,7 @@
 私有仓库：https://github.com/Kaurisss/SwiftSSH-Client
 
 在仓库 **Actions → Build unsigned IPA → Run workflow** 手动启动。
-工作流使用 macOS 26 / Xcode 26.6，生成工程、构建未签名 Release 归档，并将
+工作流使用 macOS 26 Intel / Xcode 26.6，安装 Metal 工具链，生成工程、构建未签名 Release 归档，并将
 `Payload/SwiftSSH.app` 打包为 IPA。不需要 Apple 证书、描述文件或签名 Secrets。
 
 构建成功后下载 **Artifacts → SwiftSSH-unsigned**，解压得到

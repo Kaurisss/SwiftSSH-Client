@@ -42,6 +42,16 @@ struct SplitSessionTabView: View {
         }
         .background(AppColors.terminalBg)
         .toolbar {
+            if isSplit {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Files", systemImage: "folder") {
+                        if let client = focusedSession?.sshClient { fileBrowser = .init(client: client) }
+                    }
+                    .labelStyle(.titleAndIcon)
+                    .accessibilityIdentifier("terminal-files")
+                    .disabled(focusedSession?.sshClient == nil || focusedSession?.isConnected != true)
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 toolbarButtons
             }
@@ -104,7 +114,7 @@ struct SplitSessionTabView: View {
 
             // Focus border
             if focusedPane == pane {
-                RoundedRectangle(cornerRadius: 0)
+                Rectangle()
                     .strokeBorder(AppColors.accent, lineWidth: 2)
                     .allowsHitTesting(false)
             }
@@ -189,9 +199,9 @@ struct SplitSessionTabView: View {
         }
         .padding(AppSpacing.lg)
         .background(AppColors.surface.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AppShape.container
                 .strokeBorder(
                     (loading ? AppColors.accent : disconnected ? AppColors.border : AppColors.error).opacity(0.3),
                     lineWidth: 0.5
@@ -274,10 +284,6 @@ struct SplitSessionTabView: View {
                         }
                     }
                     .disabled(focusedSession?.isConnected != true)
-                    Button("Files", systemImage: "folder") {
-                        if let client = focusedSession?.sshClient { fileBrowser = .init(client: client) }
-                    }
-                    .disabled(focusedSession?.sshClient == nil || focusedSession?.isConnected != true)
                 } label: {
                     Label("Session Actions", systemImage: "ellipsis.circle")
                 }

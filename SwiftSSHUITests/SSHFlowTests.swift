@@ -44,8 +44,9 @@ final class SSHFlowTests: XCTestCase {
         let details = app.buttons["connection-details"]
         waitForConnected(details)
 
-        app.buttons["terminal-actions"].tap()
-        app.buttons["Files"].tap()
+        let files = app.buttons["terminal-files"]
+        XCTAssertTrue(files.isHittable)
+        files.tap()
         XCTAssertTrue(app.navigationBars["Files"].waitForExistence(timeout: 10))
         app.buttons["File Actions"].tap()
         app.buttons["New Folder"].tap()

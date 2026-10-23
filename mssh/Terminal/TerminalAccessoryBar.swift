@@ -160,7 +160,8 @@ final class TerminalAccessoryBar: UIView {
             button.tag = index
             button.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
             button.backgroundColor = keyColor
-            button.layer.cornerRadius = 5
+            button.layer.cornerRadius = AppShape.cornerRadius
+            button.layer.cornerCurve = .continuous
             button.layer.borderWidth = 0.5
             button.layer.borderColor = borderColor.cgColor
 
@@ -192,7 +193,8 @@ final class TerminalAccessoryBar: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: action, for: .touchUpInside)
         button.backgroundColor = keyColor
-        button.layer.cornerRadius = 5
+        button.layer.cornerRadius = AppShape.cornerRadius
+        button.layer.cornerCurve = .continuous
         button.layer.borderWidth = 0.5
         button.layer.borderColor = borderColor.cgColor
         return button

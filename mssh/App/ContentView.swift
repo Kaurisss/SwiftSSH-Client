@@ -551,7 +551,7 @@ private struct iPadConnectionsView: View {
                             } label: {
                                 HStack(spacing: AppSpacing.md) {
                                     if let tag = connection.resolvedTagColor {
-                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        Capsule()
                                             .fill(tag)
                                             .frame(width: 3, height: 28)
                                     }
@@ -740,14 +740,14 @@ struct ConnectionRow: View {
         HStack(spacing: AppSpacing.md) {
             // Color tag stripe (if set)
             if let tag = profile.resolvedTagColor {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                Capsule()
                     .fill(tag)
                     .frame(width: 4, height: 36)
             }
 
             // Server icon
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AppShape.container
                     .fill(AppColors.accentDim)
                     .frame(width: 36, height: 36)
                 Image(systemName: "server.rack")

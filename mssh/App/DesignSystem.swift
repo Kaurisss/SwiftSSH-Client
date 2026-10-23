@@ -83,6 +83,11 @@ enum AppSpacing {
     static let xxl: CGFloat = 32
 }
 
+enum AppShape {
+    static let cornerRadius: CGFloat = 24
+    static let container = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+}
+
 // MARK: - Reusable Components
 
 struct AppCardStyle: ViewModifier {
@@ -92,9 +97,9 @@ struct AppCardStyle: ViewModifier {
         content
             .padding(AppSpacing.md)
             .background(AppColors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .clipShape(AppShape.container)
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                AppShape.container
                     .strokeBorder(isActive ? AppColors.borderActive : AppColors.border, lineWidth: 0.5)
             )
     }

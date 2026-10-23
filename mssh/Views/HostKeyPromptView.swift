@@ -19,9 +19,9 @@ struct HostKeyPromptView: View {
         }
         .frame(maxWidth: 360)
         .background(AppColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AppShape.container
                 .strokeBorder(isWarning ? AppColors.error.opacity(0.3) : AppColors.accent.opacity(0.3), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.5), radius: 30, y: 10)
@@ -96,7 +96,7 @@ struct HostKeyPromptView: View {
             }
             .padding(AppSpacing.md)
             .background(AppColors.background)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(AppShape.container)
         }
         .padding(.horizontal, AppSpacing.lg)
         .padding(.bottom, AppSpacing.lg)

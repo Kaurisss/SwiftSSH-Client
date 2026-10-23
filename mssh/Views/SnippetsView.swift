@@ -120,7 +120,7 @@ private struct SnippetRow: View {
     var body: some View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AppShape.container
                     .fill(AppColors.accentDim)
                     .frame(width: 36, height: 36)
                 Image(systemName: "chevron.right.circle")

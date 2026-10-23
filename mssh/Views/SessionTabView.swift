@@ -89,11 +89,11 @@ struct SessionTab: View {
             .buttonStyle(.plain)
         }
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AppShape.container
                 .fill(isActive ? AppColors.accentDim : AppColors.surfaceElevated)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AppShape.container
                 .strokeBorder(isActive ? AppColors.accent.opacity(0.3) : AppColors.border, lineWidth: 0.5)
         )
     }

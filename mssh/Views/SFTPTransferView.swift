@@ -25,9 +25,9 @@ struct SFTPTransferView: View {
         }
         .padding(AppSpacing.xl)
         .background(AppColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            AppShape.container
                 .strokeBorder(AppColors.border, lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.4), radius: 20)

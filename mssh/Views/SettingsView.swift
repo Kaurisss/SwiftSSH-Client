@@ -188,10 +188,10 @@ struct SettingsView: View {
                     Text("ssh root@host")
                         .font(previewFont())
                         .foregroundStyle(TerminalTheme.named(themeName).foreground)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
                         .background(TerminalTheme.named(themeName).background)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(AppShape.container)
                 }
             } header: {
                 Label("Terminal", systemImage: "terminal")
@@ -219,10 +219,10 @@ struct SettingsView: View {
                                 Text("$ ssh root@host")
                                     .font(.system(size: 11, design: .monospaced))
                                     .foregroundStyle(theme.foreground.opacity(0.85))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, AppSpacing.md)
+                                    .padding(.vertical, AppSpacing.sm)
                                     .background(theme.background)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                    .clipShape(AppShape.container)
                             }
                             Spacer()
                             if themeName == theme.name {
@@ -401,9 +401,9 @@ private struct ThemeSwatch: View {
             theme.cursorColor
         }
         .frame(width: 36, height: 24)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            AppShape.container
                 .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5)
         )
     }

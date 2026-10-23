@@ -57,6 +57,14 @@ struct TerminalSessionView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         #endif
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Files", systemImage: "folder") {
+                    if let client = session.sshClient { fileBrowser = .init(client: client) }
+                }
+                .labelStyle(.titleAndIcon)
+                .accessibilityIdentifier("terminal-files")
+                .disabled(!session.isConnected || session.sshClient == nil)
+            }
             ToolbarItem(placement: .principal) {
                 Button {
                     showConnectionInfo = true
@@ -90,10 +98,6 @@ struct TerminalSessionView: View {
                         .disabled(!session.isConnected)
                     Button("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
                         .disabled(!session.isConnected)
-                    Button("Files", systemImage: "folder") {
-                        if let client = session.sshClient { fileBrowser = .init(client: client) }
-                    }
-                    .disabled(!session.isConnected || session.sshClient == nil)
                     Divider()
                     Button("Close Session", systemImage: "xmark", role: .destructive) {
                         sessionManager.requestCloseSession(session.id)
@@ -205,9 +209,9 @@ struct TerminalSessionView: View {
         }
         .padding(AppSpacing.lg)
         .background(AppColors.surface.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AppShape.container
                 .strokeBorder(
                     (isLoading ? AppColors.accent : isDisconnected ? AppColors.border : AppColors.error).opacity(0.3),
                     lineWidth: 0.5

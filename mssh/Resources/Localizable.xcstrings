@@ -1041,8 +1041,18 @@
     "Choose an unencrypted SSH private key and try again.": {
       "extractionState": "manual",
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Choose an unencrypted SSH private key and try again." } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "请选择未加密的 SSH 私钥，然后重试。" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose an unencrypted SSH private key and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请选择未加密的 SSH 私钥，然后重试。"
+          }
+        }
       }
     },
     "About": {
@@ -6991,6 +7001,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "SwiftSSH 需要连接本地网络中的 SSH 服务器。"
+          }
+        }
+      }
+    },
+    "Cancelling…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancelling…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在取消…"
+          }
+        }
+      }
+    },
+    "Transfer stopped, but the incomplete remote file could not be removed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfer stopped, but the incomplete remote file could not be removed: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "传输已停止，但未能清理未完成的远程文件：%@"
           }
         }
       }

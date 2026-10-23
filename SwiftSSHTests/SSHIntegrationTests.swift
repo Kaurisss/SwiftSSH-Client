@@ -74,6 +74,87 @@ final class SSHIntegrationTests: XCTestCase {
         }
     }
 
+    func testCancellingSFTPTransfersCleansPartialFilesAndKeepsSSHConnected() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let service = SSHService()
+        let client = try await service.connect(host: "127.0.0.1", port: fixture.port,
+            username: fixture.username, authMethod: .privateKey(Data(fixture.privateKey.utf8)),
+            modelContainer: container, hostKeyPrompt: { _ in .accept })
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        let local = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: local) }
+        let sftp = SFTPService(client: client)
+        let directory = fixture.directory + "/" + UUID().uuidString
+        let remote = directory + "/transfer.bin"
+        let source = local.appendingPathComponent("source.bin")
+        let byteCount: UInt64 = 16 * 1024 * 1024
+        try Data().write(to: source)
+        let handle = try FileHandle(forWritingTo: source)
+        try handle.truncate(atOffset: byteCount)
+        try handle.close()
+        try await sftp.createDirectory(path: directory)
+        do {
+            let upload = Task { try await sftp.uploadFile(localURL: source, remotePath: remote) }
+            defer { upload.cancel() }
+            var uploadStarted = false
+            for _ in 0..<200 {
+                let files = try await sftp.listDirectory(path: directory)
+                if let size = files.first(where: { $0.path == remote })?.size, size > 0, size < byteCount {
+                    uploadStarted = true
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            upload.cancel()
+            XCTAssertTrue(uploadStarted, "Cancel during an actual partial write")
+            do {
+                try await upload.value
+                XCTFail("Cancelled upload must stop")
+            } catch {}
+            let remaining = try await sftp.listDirectory(path: directory)
+            XCTAssertFalse(remaining.contains { $0.path == remote }, "Remove only the cancelled upload's partial file")
+
+            try await sftp.uploadFile(localURL: source, remotePath: remote)
+            let destination = local.appendingPathComponent("download.bin")
+            let preserved = Data("keep existing local file".utf8)
+            try preserved.write(to: destination)
+            let download = Task { try await sftp.downloadFile(remotePath: remote, localURL: destination) }
+            defer { download.cancel() }
+            var downloadStarted = false
+            for _ in 0..<200 {
+                let staging = try FileManager.default.contentsOfDirectory(at: local, includingPropertiesForKeys: nil)
+                    .first { $0.lastPathComponent.hasPrefix(".SwiftSSH-") }
+                if let staging, let size = try? staging.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                   size > 0, UInt64(size) < byteCount {
+                    downloadStarted = true
+                    break
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            download.cancel()
+            XCTAssertTrue(downloadStarted, "Cancel during an actual partial read")
+            do {
+                try await download.value
+                XCTFail("Cancelled download must stop")
+            } catch {}
+            XCTAssertEqual(try Data(contentsOf: destination), preserved)
+            XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: local.path)
+                .contains { $0.hasPrefix(".SwiftSSH-") })
+            let output = try await client.executeCommand("printf 'still-connected'")
+            XCTAssertEqual(String(decoding: output.readableBytesView, as: UTF8.self), "still-connected")
+            try await sftp.deleteFile(path: remote)
+            try await sftp.deleteDirectory(path: directory)
+            await service.disconnect()
+        } catch {
+            try? await sftp.deleteFile(path: remote)
+            try? await sftp.deleteDirectory(path: directory)
+            await service.disconnect()
+            throw error
+        }
+    }
+
     func testRejectingUnknownHostPreventsAuthentication() async throws {
         let fixture = try loadFixture()
         let container = try makeContainer()

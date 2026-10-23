@@ -169,6 +169,70 @@ final class SFTPViewModelTests: XCTestCase {
         XCTAssertEqual(model.pathHistory, ["/home"])
     }
 
+    func testCancelledDownloadDiscardsLateResultAndAllowsRetry() async throws {
+        let service = TestSFTPService()
+        let model = SFTPViewModel(service: service)
+        let started = expectation(description: "Download in flight")
+        await service.suspendNextTransfer(started: started)
+        let request = Task { await model.download(item: item("cancel.txt")) }
+        await fulfillment(of: [started], timeout: 2)
+        let downloadURL = await service.downloadURL
+        let partial = try XCTUnwrap(downloadURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: partial.path))
+        model.cancelTransfer()
+        XCTAssertTrue(model.isTransferring, "Keep the operation locked until cancellation has finished cleaning up")
+        XCTAssertTrue(model.isCancellingTransfer)
+        await service.resumeTransfer()
+        await request.value
+        XCTAssertFalse(model.isBusy)
+        XCTAssertFalse(model.isCancellingTransfer)
+        XCTAssertNil(model.downloadedFile, "A late download completion must never open the export sheet")
+        XCTAssertNil(model.error, "User cancellation must not be reported as a download failure")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.deletingLastPathComponent().path))
+        await model.download(item: item("retry.txt"))
+        XCTAssertNotNil(model.downloadedFile)
+        model.discardDownload()
+    }
+
+    func testCancelledUploadRecoversWithoutReportingAnError() async {
+        let service = TestSFTPService()
+        await service.setDirectory("/home", items: [])
+        let model = SFTPViewModel(service: service)
+        await model.loadInitialDirectory()
+        let started = expectation(description: "Upload in flight")
+        await service.suspendNextTransfer(started: started)
+        let request = Task { await model.upload(url: URL(fileURLWithPath: "/tmp/cancel.txt")) }
+        await fulfillment(of: [started], timeout: 2)
+        model.cancelTransfer()
+        await service.resumeTransfer()
+        await request.value
+        XCTAssertFalse(model.isBusy)
+        XCTAssertFalse(model.isCancellingTransfer)
+        XCTAssertNil(model.error)
+        let writes = await service.mutations
+        XCTAssertTrue(writes.isEmpty)
+        model.newFolderName = "after-cancel"
+        await model.createDirectory()
+        let recovered = await service.mutations
+        XCTAssertEqual(recovered, ["mkdir:/home/after-cancel"])
+    }
+
+    func testCancelledUploadStillReportsFailedRemoteCleanup() async {
+        let service = TestSFTPService()
+        await service.setDirectory("/home", items: [])
+        let model = SFTPViewModel(service: service)
+        await model.loadInitialDirectory()
+        let started = expectation(description: "Upload requiring cleanup")
+        await service.suspendNextTransfer(started: started, cleanupFails: true)
+        let request = Task { await model.upload(url: URL(fileURLWithPath: "/tmp/partial.txt")) }
+        await fulfillment(of: [started], timeout: 2)
+        model.cancelTransfer()
+        await service.resumeTransfer()
+        await request.value
+        XCTAssertFalse(model.isBusy)
+        XCTAssertTrue(model.error?.contains("/home/partial.txt") == true)
+    }
+
     func testModifiedSortIsNewestFirstWithDeterministicNameTies() {
         let older = item("older", modified: Date(timeIntervalSince1970: 1))
         let newer = item("newer", modified: Date(timeIntervalSince1970: 2))
@@ -214,12 +278,31 @@ private actor TestSFTPService: SFTPServicing {
     private var transfersFail = false
     private var listingStarted: XCTestExpectation?
     private var listingContinuation: CheckedContinuation<Void, Never>?
+    private var transferStarted: XCTestExpectation?
+    private var transferContinuation: CheckedContinuation<Void, Never>?
+    private var cleanupFails = false
+    private(set) var downloadURL: URL?
 
     func setDirectory(_ path: String, items: [SFTPFileItem]) { directories[path] = items }
     func removeDirectory(_ path: String) { directories[path] = nil }
     func failTransfers() { transfersFail = true }
     func suspendNextListing(started: XCTestExpectation) { listingStarted = started }
     func resumeListing() { listingContinuation?.resume(); listingContinuation = nil }
+    func suspendNextTransfer(started: XCTestExpectation, cleanupFails: Bool = false) {
+        transferStarted = started
+        self.cleanupFails = cleanupFails
+    }
+    func resumeTransfer() { transferContinuation?.resume(); transferContinuation = nil }
+
+    private func pauseTransfer() async {
+        if let started = transferStarted {
+            transferStarted = nil
+            await withCheckedContinuation { continuation in
+                transferContinuation = continuation
+                started.fulfill()
+            }
+        }
+    }
 
     func getHomePath() async throws -> String { "/home" }
     func listDirectory(path: String) async throws -> [SFTPFileItem] {
@@ -235,10 +318,17 @@ private actor TestSFTPService: SFTPServicing {
     }
     func downloadFile(remotePath: String, localURL: URL) async throws {
         if transfersFail { throw CocoaError(.fileReadNoPermission) }
+        downloadURL = localURL
+        try Data("partial".utf8).write(to: localURL)
+        await pauseTransfer()
+        // Deliberately finish even after cancellation to exercise late-result suppression.
         try Data("remote data".utf8).write(to: localURL)
     }
     func uploadFile(localURL: URL, remotePath: String) async throws {
         if transfersFail { throw CocoaError(.fileWriteNoPermission) }
+        await pauseTransfer()
+        if Task.isCancelled && cleanupFails { throw SFTPTransferError.uploadCleanupFailed(remotePath) }
+        try Task.checkCancellation()
         mutations.append("upload:" + remotePath)
     }
     func deleteFile(path: String) async throws { mutations.append("delete:" + path) }

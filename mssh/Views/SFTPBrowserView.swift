@@ -21,13 +21,7 @@ struct SFTPBrowserView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                breadcrumbBar
-                if viewModel.isBusy {
-                    ProgressView()
-                        .tint(AppColors.accent)
-                        .padding(.vertical, AppSpacing.sm)
-                        .accessibilityLabel("Loading")
-                }
+                breadcrumbBar.disabled(viewModel.isBusy)
                 if let error = viewModel.directoryError {
                     VStack(alignment: .leading, spacing: AppSpacing.sm) {
                         Text(error)
@@ -42,21 +36,24 @@ struct SFTPBrowserView: View {
                     .background(AppColors.surface)
                 }
                 fileList
+                    .disabled(viewModel.isBusy)
+                    .overlay {
+                        if viewModel.isLoading && !viewModel.hasLoadedInitialDirectory {
+                            ProgressView().accessibilityLabel("Loading")
+                        }
+                    }
             }
             .background(AppColors.background)
-            .disabled(viewModel.isBusy)
             .navigationTitle("Files")
             .iOSOnlyNavigationBarTitleDisplayMode()
             .searchable(text: $viewModel.searchText, prompt: "Search Files")
             .toolbar { browserToolbar }
-            .overlay {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if viewModel.isTransferring {
-                    ZStack {
-                        Color.black.opacity(0.35).ignoresSafeArea()
-                        SFTPTransferView(fileName: viewModel.transferFileName,
-                                         transferType: viewModel.transferType)
-                            .padding(AppSpacing.lg)
-                    }
+                    SFTPTransferView(fileName: viewModel.transferFileName,
+                                     transferType: viewModel.transferType,
+                                     isCancelling: viewModel.isCancellingTransfer,
+                                     onCancel: viewModel.cancelTransfer)
                 }
             }
             .task { await viewModel.loadInitialDirectory() }
@@ -130,6 +127,7 @@ struct SFTPBrowserView: View {
             .sheet(item: $inspectedFile) { item in SFTPFileInfoView(item: item) }
         }
         .interactiveDismissDisabled(viewModel.isBusy)
+        .onDisappear { viewModel.cancelTransfer() }
         .appTheme()
     }
 
@@ -203,6 +201,12 @@ struct SFTPBrowserView: View {
                     }
                 }
             }
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 24, height: 24)
+                .opacity(viewModel.hasLoadedInitialDirectory && (viewModel.isLoading || viewModel.isMutating) ? 1 : 0)
+                .accessibilityLabel("Loading")
+                .accessibilityHidden(!viewModel.hasLoadedInitialDirectory || (!viewModel.isLoading && !viewModel.isMutating))
         }
         .padding(.trailing, AppSpacing.lg)
         .background(AppColors.surface)
@@ -254,56 +258,59 @@ struct SFTPBrowserView: View {
         .refreshable { await viewModel.refresh() }
     }
 
+    @ViewBuilder
     private func fileRow(_ item: SFTPFileItem) -> some View {
-        Button {
-            Task {
-                if item.isDirectory {
-                    await viewModel.navigate(to: item.path)
-                } else {
-                    await viewModel.download(item: item)
-                }
+        if item.isDirectory {
+            Button {
+                Task { await viewModel.navigate(to: item.path) }
+            } label: {
+                fileLabel(item)
             }
-        } label: {
-            HStack(spacing: AppSpacing.md) {
-                Image(systemName: item.iconName)
-                    .foregroundStyle(item.iconColor)
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text(item.name)
-                        .font(.body.monospaced())
-                        .foregroundStyle(AppColors.textPrimary)
-                        .multilineTextAlignment(.leading)
-                    if !item.isDirectory {
-                        Text(item.formattedSize)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                    if let modifiedDate = item.modifiedDate {
-                        Text(modifiedDate, format: .dateTime.year().month(.abbreviated).day().hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                }
-                Spacer(minLength: AppSpacing.sm)
-                Image(systemName: item.isDirectory ? "chevron.forward" : "arrow.down.circle")
-                    .foregroundStyle(AppColors.textSecondary)
-                    .accessibilityHidden(true)
+            .accessibilityHint("Open Folder")
+        } else {
+            Menu {
+                fileActions(item)
+            } label: {
+                fileLabel(item)
             }
-            .padding(.vertical, AppSpacing.xs)
+            .accessibilityIdentifier("sftp-file-\(item.name)")
+            .accessibilityHint("File Actions")
         }
-        .accessibilityHint(item.isDirectory ? Text("Open Folder") : Text("Download File"))
+    }
+
+    private func fileLabel(_ item: SFTPFileItem) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            Image(systemName: item.iconName)
+                .foregroundStyle(item.iconColor)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(item.name)
+                    .font(.body.monospaced())
+                    .foregroundStyle(AppColors.textPrimary)
+                    .multilineTextAlignment(.leading)
+                if !item.isDirectory {
+                    Text(item.formattedSize)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                if let modifiedDate = item.modifiedDate {
+                    Text(modifiedDate, format: .dateTime.year().month(.abbreviated).day().hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+            }
+            Spacer(minLength: AppSpacing.sm)
+            Image(systemName: item.isDirectory ? "chevron.forward" : "ellipsis")
+                .foregroundStyle(AppColors.textSecondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, AppSpacing.xs)
     }
 
     @ViewBuilder
     private func fileActions(_ item: SFTPFileItem) -> some View {
         Button("File Details", systemImage: "info.circle") { inspectedFile = item }
-        Button(role: .destructive) {
-            viewModel.itemToDelete = item
-            viewModel.showDeleteConfirmation = true
-        } label: {
-            Label("Delete", systemImage: "trash")
-        }
         if !item.isDirectory {
             Button {
                 Task { await viewModel.download(item: item) }
@@ -311,6 +318,12 @@ struct SFTPBrowserView: View {
                 Label("Download", systemImage: "arrow.down.circle")
             }
             .tint(AppColors.accent)
+        }
+        Button(role: .destructive) {
+            viewModel.itemToDelete = item
+            viewModel.showDeleteConfirmation = true
+        } label: {
+            Label("Delete", systemImage: "trash")
         }
     }
 }

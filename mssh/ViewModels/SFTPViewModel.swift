@@ -18,6 +18,7 @@ final class SFTPViewModel {
     var sortOrder = SFTPFileItem.SortOrder.name
 
     private(set) var isTransferring = false
+    private(set) var isCancellingTransfer = false
     private(set) var transferFileName = ""
     private(set) var transferType: TransferType = .download
     var downloadedFile: DownloadedFile?
@@ -40,6 +41,7 @@ final class SFTPViewModel {
     private enum HistoryChange { case append, back, unchanged }
     private var failedNavigation: (path: String, history: HistoryChange)?
     private var downloadDirectory: URL?
+    private var transferTask: Task<Void, Error>?
 
     var isBusy: Bool { isLoading || isTransferring || isMutating }
 
@@ -123,17 +125,25 @@ final class SFTPViewModel {
         isTransferring = true
         transferFileName = item.name
         transferType = .download
-        defer { isTransferring = false }
+        defer { finishTransfer() }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = directory.appendingPathComponent(item.name)
-            try await sftpService.downloadFile(remotePath: item.path, localURL: url)
+            let task = Task {
+                try Task.checkCancellation()
+                try await sftpService.downloadFile(remotePath: item.path, localURL: url)
+                try Task.checkCancellation()
+            }
+            transferTask = task
+            try await task.value
             downloadDirectory = directory
             downloadedFile = DownloadedFile(url: url)
         } catch {
             try? FileManager.default.removeItem(at: directory)
-            self.error = String(localized: "Download failed: \(error.localizedDescription)")
+            if transferTask?.isCancelled != true {
+                self.error = String(localized: "Download failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -155,12 +165,35 @@ final class SFTPViewModel {
         do {
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            try await sftpService.uploadFile(localURL: url, remotePath: childPath(name))
+            let path = childPath(name)
+            let task = Task {
+                try Task.checkCancellation()
+                try await sftpService.uploadFile(localURL: url, remotePath: path)
+                try Task.checkCancellation()
+            }
+            transferTask = task
+            try await task.value
         } catch {
-            self.error = String(localized: "Upload failed. Existing files are kept; choose a different name and try again. \(error.localizedDescription)")
+            if case SFTPTransferError.uploadCleanupFailed = error {
+                self.error = error.localizedDescription
+            } else if transferTask?.isCancelled != true {
+                self.error = String(localized: "Upload failed. Existing files are kept; choose a different name and try again. \(error.localizedDescription)")
+            }
         }
-        isTransferring = false
+        finishTransfer()
         await refresh()
+    }
+
+    func cancelTransfer() {
+        guard let transferTask, !isCancellingTransfer else { return }
+        isCancellingTransfer = true
+        transferTask.cancel()
+    }
+
+    private func finishTransfer() {
+        transferTask = nil
+        isTransferring = false
+        isCancellingTransfer = false
     }
 
     func delete(item: SFTPFileItem) async {

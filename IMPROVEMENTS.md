@@ -198,3 +198,46 @@
 - 按用户要求，样式由用户检查，本轮运行采用仅编译模式。配置和界面资源自检各 8 项通过。
 - 仅编译构建通过：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39960187988>，代码提交 `3dfd0be`。已确认四个测试相关步骤均跳过，Release 归档、IPA 打包及上传成功。
 - 交付：`build/delivery/39960187988/SwiftSSH-unsigned.ipa`。本地 ZIP CRC、测试配置和测试 bundle 排除、未签名状态检查通过；本轮未运行模拟器单元/UI 测试。
+
+## 组件替换候选（2026-10-23，待实施）
+
+以下记录组件评估结果及实施顺序，尚未接入这些替换方案。
+
+| 优先级 | 功能 / UI | 现状与候选方案 | 相关代码 |
+| --- | --- | --- | --- |
+| 1 | SFTP 下载后预览 | 当前完成页只有文件名和保存/分享入口。考虑使用系统 Quick Look 直接预览已下载文件，保留保存/分享能力及不支持预览的文件处理。 | `mssh/Views/SFTPBrowserView.swift`、`mssh/ViewModels/SFTPViewModel.swift` |
+| 2 | 主机密钥信任弹窗 | 将自绘遮罩和卡片改为系统 `sheet` + `Form`，统一系统圆角、转场和大字体适配；保留主机、端口、密钥类型、新旧完整指纹及明确的拒绝/信任操作。 | `mssh/Views/HostKeyPromptView.swift`、`mssh/Views/TerminalSessionView.swift`、`mssh/Views/SplitTerminalView.swift` |
+| 3 | 上传下载提示 | 当前在自绘遮罩和卡片中展示 `ProgressView`。改用系统弹层或标准状态区域承载进度，移除自绘阴影和边框；没有真实字节进度时继续使用不定进度。 | `mssh/Views/SFTPTransferView.swift`、`mssh/Views/SFTPBrowserView.swift` |
+| 4 | iPad 双终端分屏 | 当前左右/上下分屏采用固定布局。需要拖动调整比例时评估 SplitView，利用其最小比例限制、折叠和比例保存能力。 | `mssh/Views/SplitTerminalView.swift` |
+| 按需 | 命令 / 文件代码编辑 | 当前常用命令使用系统 `TextEditor`。需要长脚本或远程文件编辑时再评估 Runestone，提供语法高亮、行号、缩进和搜索；语言解析需要额外的 Tree-sitter 语言包。 | `mssh/Views/SnippetsView.swift`；远程文件编辑尚未实现 |
+
+### 依赖选择
+
+- 终端继续使用现有 SwiftTerm，SSH/SFTP 继续使用现有 Citadel。
+- 主机列表、设置、连接表单继续使用系统 SwiftUI 组件。
+- 实施顺序：文件预览 → 系统弹窗及传输提示 → 可拖动分屏；代码编辑器按实际需求加入。
+
+### 接入时验证
+
+- 文件预览：关闭预览后的临时文件清理、保存/分享，以及不支持预览的文件类型。
+- 信任弹窗：未知/变更密钥、拒绝/接受、确认期间关闭会话、长指纹与大字体；保留既有信任校验和异步连接隔离。
+- 传输提示：成功、失败及页面关闭时的状态；保留同名文件保护和失败清理。
+- 分屏：拖动尺寸变化时的终端重排、键盘展开/收起、双窗焦点、方向切换及会话保持。
+- 编辑器：命令原文与换行保留、中文输入、撤销及大文件表现。
+
+### 参考
+
+- [Apple Quick Look](https://developer.apple.com/documentation/swiftui/view/quicklookpreview(_:))
+- [Apple SwiftUI 模态呈现](https://developer.apple.com/documentation/swiftui/modal-presentations)
+- [SplitView](https://github.com/stevengharris/SplitView)
+- [Runestone](https://github.com/simonbs/Runestone)
+
+## 文件页交互与传输取消（2026-10-23）
+
+- 首次加载在列表中央显示进度；进入和返回目录时复用面包屑右侧固定位置的状态指示，不再插入额外加载行推动列表。
+- 文件夹点按进入；普通文件点按打开系统操作菜单，下载必须明确选择；保留文件详情、删除确认、长按及侧滑操作。
+- 传输改为底部系统材质状态栏，提供文件名和取消按钮；取消处理中保持操作锁定，清理结束后恢复浏览。
+- 下载取消会清理临时文件并抑制迟到的完成页面；上传取消通过独立 SFTP 子通道清理本次创建的未完成文件，不关闭 SSH 会话。
+- 保留独占上传、已有文件保护和下载完成前不替换本地目标；远程清理失败时显示文件路径，避免静默遗留。
+- 增加取消后的迟到结果、状态恢复及清理失败测试；真实 SFTP 测试覆盖部分上传/下载取消与 SSH 连接保留；真实 UI 流程验证点按文件不会直接下载。
+- 本地配置及界面资源检查各 8 项通过；iOS 编译及行为测试待 CI。

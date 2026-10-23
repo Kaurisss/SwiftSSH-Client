@@ -70,6 +70,7 @@ jobs:
           import json, socket, subprocess, sys, time
           from pathlib import Path
           root, user, port = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+          (root / 'files' / 'action-test.txt').write_text('File actions must require an explicit download.\n')
           for attempt in range(30):
               try:
                   with socket.create_connection(('127.0.0.1', port), timeout=1):
@@ -127,6 +128,7 @@ jobs:
           from pathlib import Path
           log = Path('build/tests.log').read_text()
           for name in ('testKeyAuthenticationAndSFTPRoundTripKeepsExistingFiles',
+                       'testCancellingSFTPTransfersCleansPartialFilesAndKeepsSSHConnected',
                        'testRejectingUnknownHostPreventsAuthentication',
                        'testTrustedHostDoesNotPromptAgain',
                        'testDisconnectDuringHostKeyDecisionCannotCreateALateConnectionOrTrustEntry',

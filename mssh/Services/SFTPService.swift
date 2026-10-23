@@ -60,30 +60,34 @@ final class SFTPService: SFTPServicing {
     }
 
     func downloadFile(remotePath: String, localURL: URL) async throws {
+        try Task.checkCancellation()
         let temporary = localURL.deletingLastPathComponent().appendingPathComponent(".SwiftSSH-\(UUID().uuidString)")
         try Data().write(to: temporary, options: .withoutOverwriting)
         defer { try? FileManager.default.removeItem(at: temporary) }
         let output = try FileHandle(forWritingTo: temporary)
         defer { try? output.close() }
         try await client.withSFTP { sftp in
-            try await sftp.withFile(
-                filePath: remotePath,
-                flags: .read
-            ) { file in
-                let expectedSize = try await file.readAttributes().size
-                var offset: UInt64 = 0
-                while true {
-                    try Task.checkCancellation()
-                    if let expectedSize, offset >= expectedSize { break }
-                    let length = UInt32(min(32_000, expectedSize.map { $0 - offset } ?? 32_000))
-                    let chunk = try await file.read(from: offset, length: length)
-                    guard chunk.readableBytes > 0 else {
-                        if let expectedSize, offset < expectedSize { throw SFTPTransferError.incompleteDownload }
-                        break
+            try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                try await sftp.withFile(filePath: remotePath, flags: .read) { file in
+                    let expectedSize = try await file.readAttributes().size
+                    var offset: UInt64 = 0
+                    while true {
+                        try Task.checkCancellation()
+                        if let expectedSize, offset >= expectedSize { break }
+                        let length = UInt32(min(32_000, expectedSize.map { $0 - offset } ?? 32_000))
+                        let chunk = try await file.read(from: offset, length: length)
+                        guard chunk.readableBytes > 0 else {
+                            if let expectedSize, offset < expectedSize { throw SFTPTransferError.incompleteDownload }
+                            break
+                        }
+                        try output.write(contentsOf: chunk.data)
+                        offset += UInt64(chunk.readableBytes)
                     }
-                    try output.write(contentsOf: chunk.data)
-                    offset += UInt64(chunk.readableBytes)
                 }
+            } onCancel: {
+                // Close only this transfer's SFTP channel; the terminal stays connected.
+                Task { try? await sftp.close() }
             }
         }
         try output.close()
@@ -96,15 +100,16 @@ final class SFTPService: SFTPServicing {
     }
 
     func uploadFile(localURL: URL, remotePath: String) async throws {
+        try Task.checkCancellation()
         let input = try FileHandle(forReadingFrom: localURL)
         defer { try? input.close() }
-        try await client.withSFTP { sftp in
-            try await sftp.withFile(
-                filePath: remotePath,
-                // Exclusive creation also protects files created after the directory was listed.
-                flags: [.write, .create, .forceCreate]
-            ) { file in
-                do {
+        let sftp = try await client.openSFTP()
+        do {
+            try Task.checkCancellation()
+            // Exclusive creation protects existing files and establishes cleanup ownership.
+            let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .forceCreate])
+            do {
+                try await withTaskCancellationHandler {
                     var offset: UInt64 = 0
                     while true {
                         try Task.checkCancellation()
@@ -112,13 +117,29 @@ final class SFTPService: SFTPServicing {
                         try await file.write(ByteBuffer(data: data), at: offset)
                         offset += UInt64(data.count)
                     }
-                } catch {
-                    // Only this exclusively created file can be removed on failure.
-                    try? await file.close()
-                    try? await sftp.remove(at: remotePath)
-                    throw error
+                    try await file.close()
+                    try Task.checkCancellation()
+                } onCancel: {
+                    Task { try? await sftp.close() }
                 }
+            } catch {
+                try? await file.close()
+                do {
+                    if Task.isCancelled {
+                        // The cancelled channel is closed; remove our partial file on a fresh one.
+                        try await self.deleteFile(path: remotePath)
+                    } else {
+                        try await sftp.remove(at: remotePath)
+                    }
+                } catch {
+                    throw SFTPTransferError.uploadCleanupFailed(remotePath)
+                }
+                throw error
             }
+            try await sftp.close()
+        } catch {
+            try? await sftp.close()
+            throw error
         }
     }
 
@@ -157,8 +178,14 @@ final class SFTPService: SFTPServicing {
 
 enum SFTPTransferError: LocalizedError {
     case incompleteDownload
+    case uploadCleanupFailed(String)
 
     var errorDescription: String? {
-        String(localized: "The remote file became shorter during download. Try again.")
+        switch self {
+        case .incompleteDownload:
+            String(localized: "The remote file became shorter during download. Try again.")
+        case .uploadCleanupFailed(let path):
+            String(localized: "Transfer stopped, but the incomplete remote file could not be removed: \(path)")
+        }
     }
 }

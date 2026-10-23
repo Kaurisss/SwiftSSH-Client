@@ -150,3 +150,14 @@
 - Citadel 0.12.1 在输出结束后再次关闭已被服务端关闭的 PTY。应用仅在输出处理已经完成时忽略重复关闭，保留连接创建和输出读取的实际错误。
 - 增加连续两次退出及重新打开 PTY 的真实集成测试；保持完整 UI 流程要求。
 - 最新运行：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39890112304>，代码提交 `584356d`，待结果。
+
+## 最终验证与交付
+
+- 完整通过：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39890112304>，代码提交 `584356d`。
+- 49 项单元测试、7 项 UI 测试全部通过。10 项 SSH 集成测试实际执行，包含正常 shell 退出后重新打开 PTY。
+- 完整 UI 流程通过：导入密钥、快速连接、信任指纹、文件夹新建与导航、取消/确认删除、创建并执行命令、正常退出、重新连接、取消/确认关闭会话。
+- 已检查最新的断开恢复及重连截图：正常退出显示 `Disconnected` 与 `Reconnect`，重连恢复在线状态并保留终端历史。
+- Release 设备归档、排除测试配置的检查、IPA ZIP 完整性检查及产物上传全部通过。
+- 本地交付文件位于 `build/delivery/39890112304/SwiftSSH-unsigned.ipa`；GitHub 产物保留 7 天。
+- 草稿 PR：<https://github.com/Kaurisss/SwiftSSH-Client/pull/1>。
+- 真机及个人服务器烟测尚未执行；IPA 需使用自己的证书签名后安装。

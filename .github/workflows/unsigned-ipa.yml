@@ -52,6 +52,8 @@ jobs:
           KbdInteractiveAuthentication no
           PermitRootLogin no
           UsePAM no
+          # Trust discovery tests must not trigger randomized admission drops.
+          MaxStartups 100
           DisableForwarding yes
           SetEnv LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8
           Subsystem sftp internal-sftp -d $fixture_root/files

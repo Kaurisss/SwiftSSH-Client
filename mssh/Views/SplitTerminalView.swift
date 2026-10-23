@@ -110,7 +110,8 @@ struct SplitSessionTabView: View {
     private func terminalPane(session: SessionViewModel, pane: Pane) -> some View {
         ZStack {
             AppColors.terminalBg
-            TerminalViewWrapper(bridge: session.bridge, isFocused: focusedPane == pane)
+            TerminalViewWrapper(bridge: session.bridge,
+                                isFocused: focusedPane == pane && fileBrowser == nil && snippetSession == nil)
 
             // Focus border
             if focusedPane == pane {

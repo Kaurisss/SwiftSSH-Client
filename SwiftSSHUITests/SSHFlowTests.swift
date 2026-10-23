@@ -59,7 +59,9 @@ final class SSHFlowTests: XCTestCase {
         app.buttons["File Actions"].tap()
         app.buttons["New Folder"].tap()
         let folderName = "ui-\(UUID().uuidString.prefix(8))"
-        app.alerts.textFields.firstMatch.typeText(folderName)
+        let folderInput = app.alerts.textFields.firstMatch
+        folderInput.tap()
+        folderInput.typeText(folderName)
         app.alerts.buttons["Create"].tap()
         let folder = app.buttons.containing(.staticText, identifier: folderName).firstMatch
         XCTAssertTrue(folder.waitForExistence(timeout: 10))

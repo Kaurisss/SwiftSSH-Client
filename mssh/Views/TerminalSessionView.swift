@@ -14,7 +14,8 @@ struct TerminalSessionView: View {
             AppColors.terminalBg
                 .ignoresSafeArea()
 
-            TerminalViewWrapper(bridge: session.bridge)
+            TerminalViewWrapper(bridge: session.bridge,
+                                isFocused: fileBrowser == nil && !showSnippetPicker && !showConnectionInfo)
                 .ignoresSafeArea(.container, edges: .bottom)
 
             // Connection error overlay — show whenever the session isn't

@@ -52,9 +52,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TerminalView {
         context.coordinator.wantsFocus = isFocused
-        let terminal = TerminalView()
-        // Keyboard resizing must redraw text instead of stretching the cached bitmap.
-        terminal.contentMode = .redraw
+        let terminal = Self.makeTerminalView()
         terminal.terminalDelegate = context.coordinator
         terminal.nativeBackgroundColor = resolvedColor(theme.background)
         terminal.nativeForegroundColor = resolvedColor(theme.foreground)
@@ -68,6 +66,14 @@ struct TerminalViewWrapper: UIViewRepresentable {
             Self.focusWithRetry(terminal, coordinator: context.coordinator)
         }
 
+        return terminal
+    }
+
+    static func makeTerminalView() -> TerminalView {
+        let terminal = TerminalView()
+        // Redraw at the new size; keep cached glyphs unscaled during the keyboard animation.
+        terminal.contentMode = .redraw
+        terminal.layer.contentsGravity = .topLeft
         return terminal
     }
 

@@ -137,6 +137,7 @@ final class SFTPViewModel {
             }
             transferTask = task
             try await task.value
+            if task.isCancelled { throw CancellationError() }
             downloadDirectory = directory
             downloadedFile = DownloadedFile(url: url)
         } catch {

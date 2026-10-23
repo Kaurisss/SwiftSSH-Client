@@ -199,15 +199,15 @@
 - 仅编译构建通过：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39960187988>，代码提交 `3dfd0be`。已确认四个测试相关步骤均跳过，Release 归档、IPA 打包及上传成功。
 - 交付：`build/delivery/39960187988/SwiftSSH-unsigned.ipa`。本地 ZIP CRC、测试配置和测试 bundle 排除、未签名状态检查通过；本轮未运行模拟器单元/UI 测试。
 
-## 组件替换候选（2026-10-23，待实施）
+## 组件替换计划（2026-10-23）
 
-以下记录组件评估结果及实施顺序，尚未接入这些替换方案。
+以下记录组件评估结果及实施顺序；未标记已完成的方案仍待实施。
 
 | 优先级 | 功能 / UI | 现状与候选方案 | 相关代码 |
 | --- | --- | --- | --- |
 | 1 | SFTP 下载后预览 | 当前完成页只有文件名和保存/分享入口。考虑使用系统 Quick Look 直接预览已下载文件，保留保存/分享能力及不支持预览的文件处理。 | `mssh/Views/SFTPBrowserView.swift`、`mssh/ViewModels/SFTPViewModel.swift` |
 | 2 | 主机密钥信任弹窗 | 将自绘遮罩和卡片改为系统 `sheet` + `Form`，统一系统圆角、转场和大字体适配；保留主机、端口、密钥类型、新旧完整指纹及明确的拒绝/信任操作。 | `mssh/Views/HostKeyPromptView.swift`、`mssh/Views/TerminalSessionView.swift`、`mssh/Views/SplitTerminalView.swift` |
-| 3 | 上传下载提示 | 当前在自绘遮罩和卡片中展示 `ProgressView`。改用系统弹层或标准状态区域承载进度，移除自绘阴影和边框；没有真实字节进度时继续使用不定进度。 | `mssh/Views/SFTPTransferView.swift`、`mssh/Views/SFTPBrowserView.swift` |
+| 已完成 | 上传下载提示 | 文件页重构已改为底部系统材质状态栏，移除自绘遮罩、阴影和边框，增加取消；没有真实字节进度时继续使用不定进度。 | `mssh/Views/SFTPTransferView.swift`、`mssh/Views/SFTPBrowserView.swift` |
 | 4 | iPad 双终端分屏 | 当前左右/上下分屏采用固定布局。需要拖动调整比例时评估 SplitView，利用其最小比例限制、折叠和比例保存能力。 | `mssh/Views/SplitTerminalView.swift` |
 | 按需 | 命令 / 文件代码编辑 | 当前常用命令使用系统 `TextEditor`。需要长脚本或远程文件编辑时再评估 Runestone，提供语法高亮、行号、缩进和搜索；语言解析需要额外的 Tree-sitter 语言包。 | `mssh/Views/SnippetsView.swift`；远程文件编辑尚未实现 |
 

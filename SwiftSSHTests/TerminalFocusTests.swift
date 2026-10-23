@@ -18,22 +18,19 @@ final class TerminalFocusTests: XCTestCase {
         window.rootViewController = UIHostingController(rootView:
             TerminalFocusHarness(primary: primary, secondary: secondary, focus: focus))
         window.makeKeyAndVisible()
+        window.rootViewController?.view.layoutIfNeeded()
         defer {
             primary.terminalView?.resignFirstResponder()
             secondary.terminalView?.resignFirstResponder()
             window.isHidden = true
             previousWindow?.makeKeyAndVisible()
         }
-        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            primary.terminalView?.isFirstResponder == true
-        }, object: nil)], timeout: 5)
+        try await waitForFocus(on: primary)
         XCTAssertEqual(primary.terminalView?.isFirstResponder, true)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, false)
 
         focus.primary = false
-        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            secondary.terminalView?.isFirstResponder == true
-        }, object: nil)], timeout: 5)
+        try await waitForFocus(on: secondary)
         XCTAssertEqual(primary.terminalView?.isFirstResponder, false)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, true)
 
@@ -43,6 +40,15 @@ final class TerminalFocusTests: XCTestCase {
         XCTAssertTrue(window.isKeyWindow)
         XCTAssertTrue(secondary.terminalView === focusedTerminal)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, true)
+    }
+
+    private func waitForFocus(on bridge: SSHTerminalBridge) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(15))
+        // Poll UIKit on MainActor while allowing the first keyboard presentation to finish.
+        while bridge.terminalView?.isFirstResponder != true && clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
     }
 }
 

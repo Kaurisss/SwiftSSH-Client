@@ -145,7 +145,7 @@ final class TerminalAccessoryBar: UIView {
             let isArrow = keyDef.label.unicodeScalars.first.map { $0.value >= 0x2190 && $0.value <= 0x2193 } ?? false
             let minWidth: CGFloat = isArrow ? 36 : (keyDef.label.count > 2 ? 44 : 34)
 
-            let button = UIButton(type: .system)
+            let button = TerminalAccessoryKeyButton(type: .system)
             button.setTitle(keyDef.label, for: .normal)
 
             if keyDef.isModifier {
@@ -160,7 +160,6 @@ final class TerminalAccessoryBar: UIView {
             button.tag = index
             button.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
             button.backgroundColor = keyColor
-            button.layer.cornerRadius = AppShape.cornerRadius
             button.layer.cornerCurve = .continuous
             button.layer.borderWidth = 0.5
             button.layer.borderColor = borderColor.cgColor
@@ -180,7 +179,7 @@ final class TerminalAccessoryBar: UIView {
     }
 
     private func makeKeyButton(title: String?, icon: String?, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
+        let button = TerminalAccessoryKeyButton(type: .system)
         if let title = title {
             button.setTitle(title, for: .normal)
             button.titleLabel?.font = .monospacedSystemFont(ofSize: 14, weight: .medium)
@@ -193,7 +192,6 @@ final class TerminalAccessoryBar: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: action, for: .touchUpInside)
         button.backgroundColor = keyColor
-        button.layer.cornerRadius = AppShape.cornerRadius
         button.layer.cornerCurve = .continuous
         button.layer.borderWidth = 0.5
         button.layer.borderColor = borderColor.cgColor
@@ -243,6 +241,13 @@ final class TerminalAccessoryBar: UIView {
         ctrlButton?.backgroundColor = ctrlActive ? accentColor.withAlphaComponent(0.25) : keyColor
         ctrlButton?.tintColor = ctrlActive ? accentColor : keyTextColor
         ctrlButton?.layer.borderColor = ctrlActive ? accentColor.withAlphaComponent(0.5).cgColor : borderColor.cgColor
+    }
+}
+
+private final class TerminalAccessoryKeyButton: UIButton {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = min(AppShape.cornerRadius, min(bounds.width, bounds.height) / 2)
     }
 }
 

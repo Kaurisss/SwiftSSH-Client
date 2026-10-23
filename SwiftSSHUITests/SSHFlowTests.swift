@@ -44,6 +44,14 @@ final class SSHFlowTests: XCTestCase {
         let details = app.buttons["connection-details"]
         waitForConnected(details)
 
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Hide Keyboard"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Terminal"].waitForExistence(timeout: 10))
+        capture("Live-SSH-Keyboard-Hidden")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        capture("Live-SSH-Keyboard-Visible")
+
         let files = app.buttons["terminal-files"]
         XCTAssertTrue(files.isHittable)
         files.tap()

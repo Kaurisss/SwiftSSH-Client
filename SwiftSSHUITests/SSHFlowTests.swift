@@ -29,15 +29,25 @@ final class SSHFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[keyName].waitForExistence(timeout: 10))
 
         app.tabBars.buttons["Connections"].tap()
-        let quick = app.textFields["quick-connect"]
-        quick.tap()
-        quick.typeText("\(fixture.username)@127.0.0.1:\(fixture.port)\n")
+        app.buttons["connection-add"].tap()
+        app.buttons["connection-new"].tap()
+        let profileName = "CI-Host-\(UUID().uuidString.prefix(6))"
+        for (identifier, value) in [("connection-label", profileName), ("connection-host", "127.0.0.1"),
+                                    ("connection-port", String(fixture.port)), ("connection-username", fixture.username)] {
+            let field = app.textFields[identifier]
+            field.tap()
+            let current = field.value as? String ?? ""
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + value)
+        }
         let method = app.segmentedControls["connection-auth-method"]
         XCTAssertTrue(method.waitForExistence(timeout: 5))
         method.buttons["SSH Key"].tap()
         app.buttons["connection-key"].tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", keyName)).firstMatch.tap()
         app.buttons["connection-save"].tap()
+        let savedHost = app.buttons.containing(.staticText, identifier: profileName).firstMatch
+        XCTAssertTrue(savedHost.waitForExistence(timeout: 10))
+        savedHost.tap()
         let trust = app.buttons["Trust"]
         XCTAssertTrue(trust.waitForExistence(timeout: 15))
         capture("Live-SSH-Host-Key-Prompt")

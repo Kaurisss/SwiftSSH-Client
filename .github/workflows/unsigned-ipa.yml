@@ -2,6 +2,11 @@ name: Build unsigned IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Run simulator tests before building IPA
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -31,6 +36,7 @@ jobs:
           fi
 
       - name: Start isolated SSH fixture
+        if: inputs.run_tests
         run: |
           mkdir -p build SwiftSSHTests/Fixtures
           fixture_root="$(mktemp -d "$RUNNER_TEMP/SwiftSSH-test-sshd.XXXXXX")"
@@ -91,6 +97,7 @@ jobs:
           xcodegen generate
 
       - name: Verify Chinese and appearance in simulator
+        if: inputs.run_tests
         run: |
           mkdir -p build
           test_status=0
@@ -127,7 +134,7 @@ jobs:
           exit "$test_status"
 
       - name: Upload interface screenshots
-        if: always()
+        if: always() && inputs.run_tests
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: interface-screenshots
@@ -136,7 +143,7 @@ jobs:
           retention-days: 7
 
       - name: Stop isolated SSH fixture
-        if: always()
+        if: always() && inputs.run_tests
         run: |
           if [[ -f build/ssh-fixture-root ]]; then
             fixture_root="$(cat build/ssh-fixture-root)"

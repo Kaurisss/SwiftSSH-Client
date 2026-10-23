@@ -5,7 +5,7 @@
 
 ## 当前基线
 
-- 主机分组、收藏、搜索、SSH config 导入；快速连接支持 IPv6 和 `ssh://` 地址。
+- 主机分组、收藏、搜索、SSH config 导入；通过右上角「＋」新增连接。
 - 密码 / SSH 密钥登录、首次连接及密钥变更确认；核对指纹时保留等待状态。
 - SwiftTerm 交互式终端、多个会话、iPad 分屏、常用命令搜索与原文保存。
 - SFTP 目录浏览、文件搜索、按名称/修改时间/大小排序、隐藏文件开关。
@@ -23,7 +23,7 @@
 私有仓库：https://github.com/Kaurisss/SwiftSSH-Client
 
 在仓库 **Actions → Build unsigned IPA → Run workflow** 手动启动。
-工作流使用 macOS 26 Intel / Xcode 26.6，安装 Metal 工具链，生成工程、构建未签名 Release 归档，并将
+工作流使用 macOS 26 ARM / Xcode 26.6，安装 Metal 工具链，生成工程、构建未签名 Release 归档，并将
 `Payload/SwiftSSH.app` 打包为 IPA。不需要 Apple 证书、描述文件或签名 Secrets。
 
 构建成功后下载 **Artifacts → SwiftSSH-unsigned**，解压得到
@@ -34,7 +34,14 @@ unsigned IPA 需自行签名后才能安装到常规 iPhone / iPad。
 Windows 用户可用 [project/初始化.cmd](project/初始化.cmd) 配置本地证书，
 再运行 [project/一键签名安装.cmd](project/一键签名安装.cmd) 自动下载、签名和安装，
 详见 [SIGNING.md](project/SIGNING.md)。本地流程不需要 WSL 或 xtool。
-此工作流会先运行单元测试和中文界面/外观切换测试，上传 `interface-screenshots`，然后构建设备端 Release IPA。
+默认勾选 **Run simulator tests before building IPA**，先运行单元测试和界面测试、上传 `interface-screenshots`，再构建设备端 Release IPA。
+取消勾选后仅做配置检查、编译归档和 IPA 打包，跳过模拟器测试及测试 SSH 服务。
+
+仅编译打包也可通过 CLI 启动：
+
+```bash
+gh workflow run unsigned-ipa.yml --ref codex/overnight-experience -f run_tests=false
+```
 
 ## 在 Mac 上运行
 

@@ -9,7 +9,6 @@ struct ConnectionFormView: View {
     @Query private var allConnections: [ConnectionProfile]
 
     let existingProfile: ConnectionProfile?
-    private let onConnect: ((ConnectionProfile) -> Void)?
 
     @State private var label = ""
     @State private var host = ""
@@ -36,7 +35,6 @@ struct ConnectionFormView: View {
 
     init(existingProfile: ConnectionProfile? = nil) {
         self.existingProfile = existingProfile
-        onConnect = nil
         _label = State(initialValue: existingProfile?.label ?? "")
         _host = State(initialValue: existingProfile?.host ?? "")
         _port = State(initialValue: String(existingProfile?.port ?? 22))
@@ -46,14 +44,6 @@ struct ConnectionFormView: View {
         _isFavorite = State(initialValue: existingProfile?.isFavorite ?? false)
         _groupName = State(initialValue: existingProfile?.groupName ?? "")
         _colorTag = State(initialValue: existingProfile?.colorTag)
-    }
-
-    init(target: QuickConnectTarget, onConnect: @escaping (ConnectionProfile) -> Void) {
-        existingProfile = nil
-        self.onConnect = onConnect
-        _host = State(initialValue: target.host)
-        _port = State(initialValue: String(target.port))
-        _username = State(initialValue: target.username)
     }
 
     private var parsedPort: Int? {
@@ -231,15 +221,14 @@ struct ConnectionFormView: View {
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
-            .navigationTitle(onConnect != nil ? String(localized: "Quick Connect") :
-                             existingProfile == nil ? String(localized: "New Connection") : String(localized: "Edit Connection"))
+            .navigationTitle(existingProfile == nil ? String(localized: "New Connection") : String(localized: "Edit Connection"))
             .iOSOnlyNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(onConnect == nil ? String(localized: "Save") : String(localized: "Save and Connect")) {
+                    Button("Save") {
                         save()
                     }
                     .fontWeight(.semibold)
@@ -428,7 +417,7 @@ struct ConnectionFormView: View {
         let effectiveLabel = trimmedLabel.isEmpty ? "\(username)@\(host)" : trimmedLabel
         let trimmedGroup = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            let saved = try viewModel.saveConnection(
+            _ = try viewModel.saveConnection(
                 profile: existingProfile,
                 label: effectiveLabel,
                 host: host,
@@ -443,7 +432,6 @@ struct ConnectionFormView: View {
                 modelContext: modelContext
             )
             dismiss()
-            onConnect?(saved)
         } catch {
             saveError = String(localized: "Save failed. Your draft has been kept; try again. \(error.localizedDescription)")
         }

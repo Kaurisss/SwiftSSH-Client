@@ -9,7 +9,7 @@ final class AppearanceLocalizationTests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["主机"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.textFields["quick-connect"].exists)
+        XCTAssertTrue(app.buttons["connection-add"].exists)
         capture("Chinese-Hosts")
 
         app.tabBars.buttons["密钥"].tap()
@@ -119,34 +119,6 @@ final class AppearanceLocalizationTests: XCTestCase {
     }
 
     @MainActor
-    func testQuickConnectValidatesAddressAndCollectsCredentialsBeforeSaving() {
-        let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
-                               "-hasCompletedOnboarding", "YES"]
-        app.launch()
-        let quick = app.textFields["quick-connect"]
-        XCTAssertTrue(quick.waitForExistence(timeout: 15))
-        quick.tap()
-        quick.typeText("fixture@host:70000\n")
-        let error = app.alerts["地址无效"]
-        XCTAssertTrue(error.waitForExistence(timeout: 5))
-        error.buttons["关闭"].tap()
-        XCTAssertEqual(quick.value as? String, "fixture@host:70000")
-        app.terminate()
-        app.launch()
-        XCTAssertTrue(quick.waitForExistence(timeout: 15))
-        quick.tap()
-        quick.typeText("fixture@[2001:db8::1]:2222\n")
-        XCTAssertTrue(app.navigationBars["快速连接"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.secureTextFields["connection-password"].exists)
-        XCTAssertTrue(app.buttons["connection-save"].exists)
-        capture("Chinese-Quick-Connect-Authentication")
-        app.buttons["取消"].tap()
-        XCTAssertTrue(quick.waitForExistence(timeout: 5))
-        XCTAssertEqual(quick.value as? String, "fixture@[2001:db8::1]:2222")
-    }
-
-    @MainActor
     func testSnippetEditorPreservesCommandNewlineAndValidatesEmptyInput() {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
@@ -189,7 +161,7 @@ final class AppearanceLocalizationTests: XCTestCase {
         app.tabBars.buttons["终端"].tap()
         XCTAssertTrue(app.staticTexts["暂无活动会话"].waitForExistence(timeout: 5))
         app.buttons["连接"].tap()
-        XCTAssertTrue(app.textFields["quick-connect"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["主机"].isSelected)
     }
 
     @MainActor

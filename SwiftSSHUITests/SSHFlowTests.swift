@@ -36,8 +36,10 @@ final class SSHFlowTests: XCTestCase {
                                     ("connection-port", String(fixture.port)), ("connection-username", fixture.username)] {
             let field = app.textFields[identifier]
             field.tap()
-            let current = field.value as? String ?? ""
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count) + value)
+            // The default port and username are single words; select them regardless of caret placement.
+            if identifier == "connection-port" || identifier == "connection-username" { field.doubleTap() }
+            field.typeText(value)
+            XCTAssertEqual(field.value as? String, value)
         }
         let method = app.segmentedControls["connection-auth-method"]
         XCTAssertTrue(method.waitForExistence(timeout: 5))

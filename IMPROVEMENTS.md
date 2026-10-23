@@ -188,3 +188,13 @@
 - Release 设备归档及 IPA 上传通过。本地包的 ZIP CRC、测试凭据排除、测试 bundle 排除和未签名状态检查通过。
 - 交付：`build/delivery/39952116986/SwiftSSH-unsigned.ipa`，SHA256 为 `9829df80ff2b37dfcac37eea33cd1a6651d67d9a5c2f7b71055cb2067d88b23d`。
 - 未做真机复核；IPA 需使用自己的证书签名后安装。
+
+## 原生列表与仅编译模式
+
+- iPhone 主机和活动会话改用系统 `insetGrouped` 列表，移除卡片背景、描边、固定圆角和分组数量；采用系统文字样式，保留主机地址、异常状态及密钥缺失提示。
+- 删除 iPhone/iPad 快捷连接框、对应状态与弹窗，以及新建表单中仅供快捷连接使用的保存后连接回调。新增连接统一从「＋」进入。
+- 更新现有 UI 流程，从普通新建连接表单创建主机，并保留收藏与会话切换的行为检查；删除已移除快捷连接功能的 UI 用例。
+- 工作流增加 `run_tests` 布尔开关，默认开启；设为 `false` 时跳过测试 SSH 服务、模拟器测试与截图步骤，直接检查配置并编译归档、打包 IPA。
+- 按用户要求，样式由用户检查，本轮运行采用仅编译模式。配置和界面资源自检各 8 项通过。
+- 仅编译构建通过：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39960187988>，代码提交 `3dfd0be`。已确认四个测试相关步骤均跳过，Release 归档、IPA 打包及上传成功。
+- 交付：`build/delivery/39960187988/SwiftSSH-unsigned.ipa`。本地 ZIP CRC、测试配置和测试 bundle 排除、未签名状态检查通过；本轮未运行模拟器单元/UI 测试。

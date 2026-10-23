@@ -10,7 +10,8 @@ final class SSHFlowTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-hasCompletedOnboarding", "YES", "-terminalBlinkCursor", "NO"]
+                               "-hasCompletedOnboarding", "YES", "-terminalBlinkCursor", "NO",
+                               "-appAppearance", "dark"]
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Keys"].waitForExistence(timeout: 15))
         app.tabBars.buttons["Keys"].tap()
@@ -51,6 +52,25 @@ final class SSHFlowTests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         capture("Live-SSH-Keyboard-Visible")
+
+        app.buttons["Hide Keyboard"].tap()
+        let connectionsTab = app.tabBars.buttons["Connections"]
+        XCTAssertTrue(connectionsTab.waitForExistence(timeout: 10))
+        connectionsTab.tap()
+        let favorite = app.buttons["Favorite"].firstMatch
+        XCTAssertTrue(favorite.waitForExistence(timeout: 5))
+        capture("Native-Connections-Dark")
+        favorite.tap()
+        let unfavorite = app.buttons["Unfavorite"].firstMatch
+        XCTAssertTrue(unfavorite.waitForExistence(timeout: 5))
+        XCTAssertTrue(connectionsTab.isSelected, "Favoriting a host must not start a connection.")
+        unfavorite.tap()
+        let activeSession = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "active-session-")
+        ).firstMatch
+        XCTAssertTrue(activeSession.waitForExistence(timeout: 5))
+        activeSession.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
 
         let files = app.buttons["terminal-files"]
         XCTAssertTrue(files.isHittable)

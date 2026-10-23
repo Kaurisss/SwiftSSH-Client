@@ -116,18 +116,15 @@ private struct iPhoneConnectionsView: View {
             List {
                 Section {
                     quickConnectBar
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 }
 
                 if !sessionManager.sessions.isEmpty {
-                    Section {
+                    Section("Active Sessions") {
                         ForEach(sessionManager.sessions) { session in
                             activeSessionRow(session)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
                                         sessionManager.requestCloseSession(session.id)
@@ -136,16 +133,12 @@ private struct iPhoneConnectionsView: View {
                                     }
                                 }
                         }
-                    } header: {
-                        sectionHeader(title: String(localized: "Active Sessions"), count: sessionManager.sessions.count)
                     }
                 }
 
                 connectionListSections
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(AppColors.background)
+            .listStyle(.insetGrouped)
             .searchable(text: $searchText, prompt: "Search connections")
             .navigationTitle("SwiftSSH")
             .toolbar {
@@ -255,25 +248,30 @@ private struct iPhoneConnectionsView: View {
         } label: {
             HStack(spacing: AppSpacing.md) {
                 StatusDot(isConnected: session.isConnected)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.title)
-                        .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text(session.isConnected ? String(localized: "Connected") : session.statusMessage)
-                        .font(AppFonts.monoCaption)
-                        .foregroundStyle(session.isConnected ? AppColors.connected : AppColors.textSecondary)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    if !session.isConnected {
+                        Text(session.statusMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
-            .appCard(isActive: session.isConnected)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("active-session-\(session.id)")
+        .accessibilityValue(session.isConnected ? String(localized: "Connected") : session.statusMessage)
     }
 
     // MARK: - Saved connection sections (rendered inside the parent List)
@@ -294,7 +292,7 @@ private struct iPhoneConnectionsView: View {
                         connectionRow(connection)
                     }
                 } header: {
-                    sectionHeader(title: section.title, count: section.items.count)
+                    Text(section.title)
                 }
             }
         }
@@ -307,9 +305,6 @@ private struct iPhoneConnectionsView: View {
             ConnectionRow(profile: connection)
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 modelContext.delete(connection)
@@ -354,25 +349,6 @@ private struct iPhoneConnectionsView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
-    }
-
-    /// Custom section header that mimics `AppSectionHeader` but plays nicely
-    /// inside `List` (no extra leading padding, dark background).
-    private func sectionHeader(title: String, count: Int?) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppColors.textSecondary)
-            if let count {
-                Text("\(count)")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(AppColors.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
     private var emptyState: some View {
@@ -728,37 +704,27 @@ struct ConnectionRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
-            // Color tag stripe (if set)
-            if let tag = profile.resolvedTagColor {
-                Capsule()
-                    .fill(tag)
-                    .frame(width: 4, height: 36)
-            }
-
-            // Server icon
             Image(systemName: "server.rack")
                 .font(.body)
-                .foregroundStyle(AppColors.textSecondary)
-                .frame(width: 24)
+                .foregroundStyle(profile.resolvedTagColor ?? .secondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(profile.label)
-                        .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(1)
-                    if let group = profile.groupName, !group.isEmpty {
-                        Text(group)
-                            .font(.caption)
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                }
+                Text(profile.label)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
 
                 Text("\(profile.username)@\(profile.host):\(profile.port)")
-                    .font(AppFonts.monoCaption)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                if keyMissingOnDevice {
+                    Label("No Key", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.warning)
+                }
             }
 
             Spacer()
@@ -769,34 +735,13 @@ struct ConnectionRow: View {
                 try? modelContext.save()
             } label: {
                 Image(systemName: profile.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: 13))
-                    .foregroundStyle(profile.isFavorite ? Color.yellow : AppColors.textTertiary)
-                    .frame(width: 24, height: 24)
+                    .font(.body)
+                    .foregroundStyle(profile.isFavorite ? Color.yellow : .secondary)
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(profile.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"))
-
-            VStack(alignment: .trailing, spacing: 2) {
-                if let lastConnected = profile.lastConnectedAt {
-                    Text(lastConnected, style: .relative)
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-                HStack(spacing: 4) {
-                    if keyMissingOnDevice {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(AppColors.warning)
-                    }
-                    Image(systemName: profile.authType == .key ? "key.fill" : "lock.fill")
-                        .font(.system(size: 9))
-                    Text(keyMissingOnDevice ? String(localized: "No Key") : (profile.authType == .key ? String(localized: "Key") : String(localized: "Pass")))
-                        .font(.system(size: 9, weight: .medium))
-                }
-                .foregroundStyle(keyMissingOnDevice ? AppColors.warning : AppColors.textTertiary)
-            }
         }
-        .appCard()
     }
 }

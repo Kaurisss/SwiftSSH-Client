@@ -259,8 +259,8 @@ final class SSHIntegrationTests: XCTestCase {
             XCTAssertFalse(bridge.isConnected)
             XCTAssertEqual(bridge.statusMessage, String(localized: "Disconnected"))
             bridge.onStateChange = nil
+            bridge.disconnect()
         }
-        bridge.disconnect()
         await service.disconnect()
     }
 

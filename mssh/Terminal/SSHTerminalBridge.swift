@@ -148,74 +148,74 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
 
         var finishedOutput = false
         do {
-        try await client.withPTY(ptyRequest) { [weak self] inbound, outbound in
-            guard let self else { return }
-            try Task.checkCancellation()
+            try await client.withPTY(ptyRequest) { [weak self] inbound, outbound in
+                guard let self else { return }
+                try Task.checkCancellation()
 
-            let isCurrent = await MainActor.run {
-                guard self.connectionID == connectionID else { return false }
-                self.writer = outbound
-                self.updateState(connected: true, status: String(localized: "Connected"))
-                return true
-            }
-            guard isCurrent else { throw CancellationError() }
-
-            // Writer task: drains the write stream ONE item at a time, guaranteeing
-            // that each `outbound.write` completes before the next one starts.
-            // This is the key fix for the Thai-character hang: no concurrent writes.
-            let writerTask = Task {
-                for await bytes in writeStream {
-                    guard !Task.isCancelled else { break }
-                    do {
-                        let buffer = ByteBuffer(bytes: bytes)
-                        try await outbound.write(buffer)
-                    } catch {
-                        // Write failure means the channel is dead; report and bail.
-                        await MainActor.run { [weak self] in
-                            guard let self, self.connectionID == connectionID, !self.isDisconnecting else { return }
-                            self.updateState(connected: false, status: String(localized: "Connection lost"))
-                        }
-                        break
-                    }
+                let isCurrent = await MainActor.run {
+                    guard self.connectionID == connectionID else { return false }
+                    self.writer = outbound
+                    self.updateState(connected: true, status: String(localized: "Connected"))
+                    return true
                 }
-            }
+                guard isCurrent else { throw CancellationError() }
 
-            // Read SSH output and feed to terminal — this loop keeps the PTY alive
-            do {
-                for try await chunk in inbound {
-                    // Check for cancellation periodically
-                    try Task.checkCancellation()
-
-                    switch chunk {
-                    case .stdout(let buffer):
-                        let bytes = Array(buffer.readableBytesView)
-                        await MainActor.run {
-                            guard self.connectionID == connectionID else { return }
-                            self.terminalView?.feed(byteArray: ArraySlice(bytes))
-                        }
-                    case .stderr(let buffer):
-                        let bytes = Array(buffer.readableBytesView)
-                        await MainActor.run {
-                            guard self.connectionID == connectionID else { return }
-                            self.terminalView?.feed(byteArray: ArraySlice(bytes))
+                // Writer task: drains the write stream ONE item at a time, guaranteeing
+                // that each `outbound.write` completes before the next one starts.
+                // This is the key fix for the Thai-character hang: no concurrent writes.
+                let writerTask = Task {
+                    for await bytes in writeStream {
+                        guard !Task.isCancelled else { break }
+                        do {
+                            let buffer = ByteBuffer(bytes: bytes)
+                            try await outbound.write(buffer)
+                        } catch {
+                            // Write failure means the channel is dead; report and bail.
+                            await MainActor.run { [weak self] in
+                                guard let self, self.connectionID == connectionID, !self.isDisconnecting else { return }
+                                self.updateState(connected: false, status: String(localized: "Connection lost"))
+                            }
+                            break
                         }
                     }
                 }
-            } catch is CancellationError {
+
+                // Read SSH output and feed to terminal — this loop keeps the PTY alive
+                do {
+                    for try await chunk in inbound {
+                        // Check for cancellation periodically
+                        try Task.checkCancellation()
+
+                        switch chunk {
+                        case .stdout(let buffer):
+                            let bytes = Array(buffer.readableBytesView)
+                            await MainActor.run {
+                                guard self.connectionID == connectionID else { return }
+                                self.terminalView?.feed(byteArray: ArraySlice(bytes))
+                            }
+                        case .stderr(let buffer):
+                            let bytes = Array(buffer.readableBytesView)
+                            await MainActor.run {
+                                guard self.connectionID == connectionID else { return }
+                                self.terminalView?.feed(byteArray: ArraySlice(bytes))
+                            }
+                        }
+                    }
+                } catch is CancellationError {
+                    writerTask.cancel()
+                    throw CancellationError()
+                } catch {
+                    writerTask.cancel()
+                    await MainActor.run {
+                        if self.connectionID == connectionID && !self.isDisconnecting {
+                            self.updateState(connected: false, status: String(localized: "Connection lost: \(error.localizedDescription)"))
+                        }
+                    }
+                }
+
                 writerTask.cancel()
-                throw CancellationError()
-            } catch {
-                writerTask.cancel()
-                await MainActor.run {
-                    if self.connectionID == connectionID && !self.isDisconnecting {
-                        self.updateState(connected: false, status: String(localized: "Connection lost: \(error.localizedDescription)"))
-                    }
-                }
+                finishedOutput = true
             }
-
-            writerTask.cancel()
-            finishedOutput = true
-        }
         } catch ChannelError.alreadyClosed where finishedOutput {
             // Citadel closes the PTY again after the server has already closed it.
         }

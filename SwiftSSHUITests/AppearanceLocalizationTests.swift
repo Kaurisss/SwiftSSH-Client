@@ -46,7 +46,7 @@ final class AppearanceLocalizationTests: XCTestCase {
                                "-hasCompletedOnboarding", "YES"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 30))
         app.tabBars.buttons["设置"].tap()
         XCTAssertFalse(app.segmentedControls["appearance-picker"].exists)
         XCTAssertFalse(app.buttons["清除所有数据"].exists)

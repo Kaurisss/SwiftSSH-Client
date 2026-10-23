@@ -13,6 +13,7 @@ final class TerminalFocusTests: XCTestCase {
         secondary.isConnected = true
         let focus = TerminalFocusFixture()
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIHostingController(rootView:
             TerminalFocusHarness(primary: primary, secondary: secondary, focus: focus))
@@ -21,18 +22,26 @@ final class TerminalFocusTests: XCTestCase {
             primary.terminalView?.resignFirstResponder()
             secondary.terminalView?.resignFirstResponder()
             window.isHidden = true
+            previousWindow?.makeKeyAndVisible()
         }
-        try await Task.sleep(for: .seconds(1))
+        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            primary.terminalView?.isFirstResponder == true
+        }, object: nil)], timeout: 5)
         XCTAssertEqual(primary.terminalView?.isFirstResponder, true)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, false)
 
         focus.primary = false
-        try await Task.sleep(for: .seconds(1))
+        await fulfillment(of: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            secondary.terminalView?.isFirstResponder == true
+        }, object: nil)], timeout: 5)
         XCTAssertEqual(primary.terminalView?.isFirstResponder, false)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, true)
 
+        let focusedTerminal = try XCTUnwrap(secondary.terminalView)
         primary.statusMessage = "Background update"
         try await Task.sleep(for: .seconds(1))
+        XCTAssertTrue(window.isKeyWindow)
+        XCTAssertTrue(secondary.terminalView === focusedTerminal)
         XCTAssertEqual(secondary.terminalView?.isFirstResponder, true)
     }
 }

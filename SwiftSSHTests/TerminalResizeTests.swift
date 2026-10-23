@@ -7,18 +7,41 @@ import XCTest
 final class TerminalResizeTests: XCTestCase {
     func testResizingRedrawsGlyphsWithoutStretchingTheCachedScreen() async throws {
         let bridge = SSHTerminalBridge()
-        let host = UIHostingController(rootView: TerminalViewWrapper(bridge: bridge))
-        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 260)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let host = UIHostingController(rootView: TerminalViewWrapper(bridge: bridge)
+            .frame(width: 320, height: 260))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            previousWindow?.makeKeyAndVisible()
+        }
         host.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(200))
         let terminal = try XCTUnwrap(bridge.terminalView)
+        let configuredMode = terminal.contentMode
+        terminal.contentMode = .scaleToFill
         terminal.nativeBackgroundColor = .white
         terminal.nativeForegroundColor = .red
         terminal.feed(text: "\u{1B}[?25l\u{1B}[2J\u{1B}[HHHHH")
-        try await Task.sleep(for: .milliseconds(100))
         terminal.layoutIfNeeded()
+        terminal.setNeedsDisplay()
         terminal.layer.displayIfNeeded()
         let original = try glyphBounds(in: terminal)
         XCTAssertGreaterThan(original.height, 5)
+
+        terminal.bounds.size.height = 520
+        terminal.layer.displayIfNeeded()
+        let stretched = try glyphBounds(in: terminal)
+        XCTAssertGreaterThan(stretched.height, original.height * 1.5,
+                             "The control must reproduce the cached-bitmap stretching.")
+        terminal.bounds.size.height = 260
+        terminal.contentMode = configuredMode
+        terminal.layoutIfNeeded()
+        terminal.setNeedsDisplay()
+        terminal.layer.displayIfNeeded()
 
         // A keyboard transition can composite the resized layer before its next layout pass.
         for height in [CGFloat(520), 260, 520, 260] {
@@ -39,6 +62,10 @@ final class TerminalResizeTests: XCTestCase {
         let image = UIGraphicsImageRenderer(size: view.bounds.size, format: format).image { context in
             view.layer.render(in: context.cgContext)
         }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Terminal viewport \(Int(view.bounds.height))pt"
+        attachment.lifetime = .keepAlways
+        add(attachment)
         let cgImage = try XCTUnwrap(image.cgImage)
         let width = cgImage.width, height = cgImage.height
         var pixels = [UInt8](repeating: 0, count: width * height * 4)

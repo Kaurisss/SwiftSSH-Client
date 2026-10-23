@@ -1,0 +1,133 @@
+{
+  "features": [
+    "specular-location"
+  ],
+  "groups": [
+    {
+      "blend-mode": "normal",
+      "blur-material": null,
+      "hidden": false,
+      "layers": [
+        {
+          "blend-mode": "normal",
+          "fill": "automatic",
+          "glass": true,
+          "hidden": false,
+          "name": "Shell prompt",
+          "opacity": 1,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          },
+          "image-name-specializations": [
+            {
+              "value": "light.svg"
+            },
+            {
+              "appearance": "dark",
+              "value": "dark.svg"
+            },
+            {
+              "appearance": "tinted",
+              "value": "dark.svg"
+            }
+          ]
+        }
+      ],
+      "lighting": "individual",
+      "opacity": 1,
+      "position": {
+        "scale": 1,
+        "translation-in-points": [
+          0,
+          0
+        ]
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.7
+      },
+      "specular": "outside",
+      "refractivity-specializations": [
+        {
+          "value": {
+            "depth": 1,
+            "enabled": false,
+            "strength": 1
+          }
+        },
+        {
+          "appearance": "dark",
+          "value": {
+            "depth": 0,
+            "enabled": false,
+            "strength": 0.5
+          }
+        }
+      ],
+      "translucency-specializations": [
+        {
+          "value": {
+            "enabled": true,
+            "value": 0.5
+          }
+        },
+        {
+          "appearance": "dark",
+          "value": {
+            "enabled": true,
+            "value": 1
+          }
+        }
+      ]
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  },
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:1.00000,1.00000,1.00000,1.00000",
+          "srgb:0.96078,0.96078,0.96078,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.12000,0.12000,0.12000,1.00000",
+          "srgb:0.06000,0.06000,0.06000,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
+      }
+    }
+  ]
+}

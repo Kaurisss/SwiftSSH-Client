@@ -146,6 +146,8 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
             }
         }
 
+        var finishedOutput = false
+        do {
         try await client.withPTY(ptyRequest) { [weak self] inbound, outbound in
             guard let self else { return }
             try Task.checkCancellation()
@@ -212,6 +214,10 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
             }
 
             writerTask.cancel()
+            finishedOutput = true
+        }
+        } catch ChannelError.alreadyClosed where finishedOutput {
+            // Citadel closes the PTY again after the server has already closed it.
         }
     }
 

@@ -236,6 +236,34 @@ final class SSHIntegrationTests: XCTestCase {
         }
     }
 
+    func testShellExitIsNormalAndReplacementPTYCanConnect() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let service = SSHService()
+        let client = try await service.connect(host: "127.0.0.1", port: fixture.port, username: fixture.username,
+            authMethod: .privateKey(Data(fixture.privateKey.utf8)), modelContainer: container,
+            hostKeyPrompt: { _ in .accept })
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        let bridge = SSHTerminalBridge()
+        for _ in 0..<2 {
+            let connected = expectation(description: "PTY connected")
+            let ended = expectation(description: "Shell exit is reported")
+            bridge.onStateChange = { connectedState, status in
+                if connectedState { connected.fulfill() }
+                if !connectedState && status != String(localized: "Opening terminal...") { ended.fulfill() }
+            }
+            bridge.connect(client: client, cols: 80, rows: 24)
+            await fulfillment(of: [connected], timeout: 10)
+            bridge.sendToSSH(data: ArraySlice("exit\n".utf8))
+            await fulfillment(of: [ended], timeout: 10)
+            XCTAssertFalse(bridge.isConnected)
+            XCTAssertEqual(bridge.statusMessage, String(localized: "Disconnected"))
+            bridge.onStateChange = nil
+        }
+        bridge.disconnect()
+        await service.disconnect()
+    }
+
     func testChangedHostKeyRequiresApprovalAndRejectionPreservesTrust() async throws {
         let fixture = try loadFixture()
         let container = try makeContainer()

@@ -175,6 +175,16 @@
 - 提交 `55baeba` 的 50 项单元测试全部通过，包含焦点与动画像素回归；UI 快照查询超时耗尽该轮构建时间。同一提交第二次执行时焦点和像素回归再次通过，运行器同时出现应用启动及终止超时。
 - 第二次运行的 SSH 服务日志明确记录 `drop connection #10 ... Maxstartups`；隔离的回环 fixture 改为 `MaxStartups 100`，避免连续信任发现握手触发默认的随机提前丢连接。认证方式与监听范围保持不变。
 - 根据 [GitHub 官方镜像清单](https://github.com/actions/runner-images/blob/main/README.md) 改用现已能分配的 `macos-26` ARM 运行器，保留 Xcode 26.6；构建期限扩为 90 分钟，让慢运行能完整返回验证与归档结果。
-- 当前验证：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39943264046>，提交 `c3043a0`；替代使用旧 fixture 的 `39942350496`。
-- `c3043a0` 的完整模拟器验证通过，键盘展开/收起及 SFTP 截图已检查。动画附件额外发现缓存之外的区域沿用 SwiftTerm 初始黑底；同步 UIKit 背景与终端主题，并在同一像素回归中检查新露出的区域颜色。
+- 首轮 ARM 验证：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39943264046>，提交 `c3043a0`，完整通过；替代使用旧 fixture 的 `39942350496`。
+- `c3043a0` 的键盘展开/收起及 SFTP 截图已检查。动画附件提示缓存之外存在透明区域；同步 UIKit 背景与终端主题，并在同一像素回归中检查新露出的区域颜色。
 - `8ed9309` 的全部 7 项 UI 测试通过；新增背景断言失败。检查 PNG 的 RGBA 后确认缓存以外为透明像素（alpha 为 0），并非不透明黑色。测试截图按实际白色父容器合成透明区域，保留字形与不透明背景的像素检查；UIKit 背景继续同步当前终端主题。
+
+## 键盘修复最终交付
+
+- 完整通过：<https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/39952116986>，代码提交 `becc81a`。
+- 50 项单元测试、7 项 UI 测试全部通过，包含动画像素回归、焦点切换、真实 SSH/SFTP 文件操作与重连。
+- 像素回归保留旧配置拉伸对照；修复后反复切换视口时字形宽高不变，透明区域按父容器正确合成。
+- 已检查最新键盘展开、收起与动画中间帧截图，字形正常。
+- Release 设备归档及 IPA 上传通过。本地包的 ZIP CRC、测试凭据排除、测试 bundle 排除和未签名状态检查通过。
+- 交付：`build/delivery/39952116986/SwiftSSH-unsigned.ipa`，SHA256 为 `9829df80ff2b37dfcac37eea33cd1a6651d67d9a5c2f7b71055cb2067d88b23d`。
+- 未做真机复核；IPA 需使用自己的证书签名后安装。

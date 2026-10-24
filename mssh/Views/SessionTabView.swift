@@ -15,13 +15,12 @@ struct SessionTabView: View {
                                 SessionTab(
                                     title: session.title,
                                     isConnected: session.isConnected,
+                                    status: session.statusMessage,
                                     isActive: session.id == sessionManager.activeSessionID,
                                     onTap: {
-                                        withAnimation(.easeInOut(duration: 0.15)) {
-                                            sessionManager.activeSessionID = session.id
-                                        }
+                                        sessionManager.activeSessionID = session.id
                                     },
-                                    onClose: { sessionManager.closeSession(session.id) }
+                                    onClose: { sessionManager.requestCloseSession(session.id) }
                                 )
                                 .id(session.id)
                             }
@@ -29,7 +28,7 @@ struct SessionTabView: View {
                         .padding(.horizontal, AppSpacing.sm)
                         .padding(.vertical, AppSpacing.xs)
                     }
-                    .frame(height: 38)
+                    .frame(minHeight: 44)
                     .background(AppColors.surface)
                     .overlay(
                         Rectangle()
@@ -39,9 +38,7 @@ struct SessionTabView: View {
                     )
                     .onChange(of: sessionManager.activeSessionID) { _, newID in
                         if let newID {
-                            withAnimation {
-                                proxy.scrollTo(newID, anchor: .center)
-                            }
+                            proxy.scrollTo(newID, anchor: .center)
                         }
                     }
                 }
@@ -58,37 +55,46 @@ struct SessionTabView: View {
 struct SessionTab: View {
     let title: String
     let isConnected: Bool
+    let status: String
     let isActive: Bool
     let onTap: () -> Void
     let onClose: () -> Void
 
     var body: some View {
-        HStack(spacing: 5) {
-            StatusDot(isConnected: isConnected)
-
-            Text(title)
-                .font(.system(size: 11, weight: isActive ? .semibold : .regular, design: .monospaced))
-                .foregroundStyle(isActive ? AppColors.textPrimary : AppColors.textSecondary)
-                .lineLimit(1)
+        HStack(spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: AppSpacing.sm) {
+                    StatusDot(isConnected: isConnected)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(.caption.monospaced().weight(isActive ? .semibold : .regular))
+                        .foregroundStyle(isActive ? AppColors.textPrimary : AppColors.textSecondary)
+                        .lineLimit(1)
+                }
+                .padding(.leading, AppSpacing.md)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(isActive ? .isSelected : [])
+            .accessibilityValue(status)
 
             Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                Label("Close \(title)", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+                    .font(.caption)
                     .foregroundStyle(isActive ? AppColors.textSecondary : AppColors.textTertiary)
+                    .frame(minWidth: 44, minHeight: 44)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AppShape.container
                 .fill(isActive ? AppColors.accentDim : AppColors.surfaceElevated)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+            AppShape.container
                 .strokeBorder(isActive ? AppColors.accent.opacity(0.3) : AppColors.border, lineWidth: 0.5)
         )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
     }
 }

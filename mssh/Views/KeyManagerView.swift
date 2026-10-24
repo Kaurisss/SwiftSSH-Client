@@ -116,11 +116,6 @@ struct KeyManagerView: View {
                 .font(AppFonts.heading)
                 .foregroundStyle(AppColors.textPrimary)
 
-            Text("Generate or import keys for\npasswordless authentication")
-                .font(.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
-                .multilineTextAlignment(.center)
-
             VStack(spacing: AppSpacing.sm) {
                 Button {
                     showGenerateSheet = true
@@ -132,6 +127,7 @@ struct KeyManagerView: View {
                     .frame(maxWidth: 260)
                 }
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(AppColors.onEmphasis)
 
                 Button {
                     showImportSheet = true
@@ -187,15 +183,6 @@ struct KeyManagerView: View {
                 .foregroundStyle(AppColors.textTertiary)
                 .lineLimit(2)
 
-            HStack(spacing: AppSpacing.sm) {
-                Text("Created \(key.createdAt.formatted(.relative(presentation: .named)))")
-                    .font(.system(size: 10))
-                    .foregroundStyle(AppColors.textTertiary)
-                Spacer()
-                Label("Local", systemImage: "iphone")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(AppColors.textTertiary)
-            }
         }
         .appCard()
         .contextMenu {

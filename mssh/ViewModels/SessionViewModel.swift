@@ -8,11 +8,13 @@ import SwiftData
 final class SessionViewModel: Identifiable {
     let id = UUID()
     let profile: ConnectionProfile
+    private(set) var endpoint: (host: String, port: Int, username: String)
     let bridge = SSHTerminalBridge()
 
     var title: String
     var isConnected: Bool = false
     var statusMessage: String = String(localized: "Disconnected")
+    private(set) var connectedAt: Date?
 
     /// When non-nil, the UI should present the host key prompt overlay.
     var pendingHostKeyPrompt: HostKeyPromptType?
@@ -20,7 +22,8 @@ final class SessionViewModel: Identifiable {
     /// Number of connection attempts (for retry logic)
     var connectionAttempts: Int = 0
 
-    private let sshService = SSHService()
+    private var sshService: SSHService?
+    private var connectionID = UUID()
     private(set) var client: SSHClient?
     private var hostKeyPromptContinuation: CheckedContinuation<HostKeyPromptResult, Never>?
 
@@ -32,21 +35,38 @@ final class SessionViewModel: Identifiable {
 
     init(profile: ConnectionProfile) {
         self.profile = profile
+        endpoint = (profile.host, profile.port, profile.username)
         self.title = profile.label
         bridge.onStateChange = { [weak self] connected, status in
-            self?.isConnected = connected
-            self?.statusMessage = status
+            guard let self else { return }
+            if connected && self.connectedAt == nil { self.connectedAt = Date() }
+            if !connected { self.connectedAt = nil }
+            self.isConnected = connected
+            self.statusMessage = status
         }
     }
 
     func connect() async {
+        guard !isConnected, statusMessage != String(localized: "Connecting..."),
+              statusMessage != String(localized: "Opening terminal...") else { return }
         guard let modelContainer else {
             statusMessage = String(localized: "Internal error: missing model container.")
             return
         }
 
+        bridge.disconnect()
+        client = nil
+        let attempt = UUID()
+        connectionID = attempt
+        endpoint = (profile.host, profile.port, profile.username)
+        title = profile.label
         connectionAttempts += 1
         statusMessage = String(localized: "Connecting...")
+
+        let previousService = sshService
+        sshService = nil
+        await previousService?.disconnect()
+        guard connectionID == attempt else { return }
 
         let authMethod: SSHAuthMethod
         do {
@@ -62,18 +82,24 @@ final class SessionViewModel: Identifiable {
             return
         }
 
+        let service = SSHService()
+        sshService = service
         do {
-            let client = try await sshService.connect(
-                host: profile.host,
-                port: profile.port,
-                username: profile.username,
+            let client = try await service.connect(
+                host: endpoint.host,
+                port: endpoint.port,
+                username: endpoint.username,
                 authMethod: authMethod,
                 modelContainer: modelContainer,
                 hostKeyPrompt: { [weak self] promptType in
-                    guard let self else { return .reject }
+                    guard let self, await self.connectionID == attempt else { return .reject }
                     return await self.requestHostKeyDecision(promptType)
                 }
             )
+            guard connectionID == attempt else {
+                try? await client.close()
+                return
+            }
             self.client = client
 
             // Update last connected timestamp
@@ -84,14 +110,20 @@ final class SessionViewModel: Identifiable {
 
             // Start terminal session with default size (will resize on layout)
             bridge.connect(client: client, cols: 80, rows: 24)
+        } catch is CancellationError {
+            guard connectionID == attempt else { return }
+            statusMessage = String(localized: "Disconnected")
         } catch let error as SSHConnectionError {
+            guard connectionID == attempt else { return }
             statusMessage = String(localized: "Connection failed: \(error.localizedDescription)")
         } catch let error as KeyParseError {
+            guard connectionID == attempt else { return }
             // Surface verbatim — the message already includes the conversion
             // command. No "Connection failed:" prefix, since the failure was
             // before the connection attempt.
             statusMessage = error.errorDescription ?? String(localized: "Could not parse private key.")
         } catch {
+            guard connectionID == attempt else { return }
             // Provide user-friendly error messages
             let friendlyMessage = friendlyErrorMessage(error)
             statusMessage = String(localized: "Connection failed: \(friendlyMessage)")
@@ -99,6 +131,7 @@ final class SessionViewModel: Identifiable {
     }
 
     func disconnect() {
+        connectionID = UUID()
         bridge.disconnect()
         // If a host key prompt is pending, reject it so the continuation
         // does not hang indefinitely.
@@ -106,8 +139,9 @@ final class SessionViewModel: Identifiable {
             rejectHostKey()
         }
         client = nil
-        Task {
-            await sshService.disconnect()
+        if let service = sshService {
+            sshService = nil
+            Task { await service.disconnect() }
         }
     }
 
@@ -195,13 +229,13 @@ final class SessionViewModel: Identifiable {
                 return String(localized: "SSH handshake failed. The server may use unsupported algorithms.")
             }
             if debugDesc.contains("error 1") {
-                return String(localized: "SSH protocol error during connection to \(profile.host).")
+                return String(localized: "SSH protocol error during connection to \(endpoint.host).")
             }
             if debugDesc.contains("error 2") || debugDesc.contains("error 3") {
-                return String(localized: "SSH session could not be established with \(profile.host).")
+                return String(localized: "SSH session could not be established with \(endpoint.host).")
             }
             // Generic Citadel error fallback
-            return String(localized: "SSH connection failed. Check that \(profile.host):\(profile.port) is reachable and credentials are correct.")
+            return String(localized: "SSH connection failed. Check that \(endpoint.host):\(endpoint.port) is reachable and credentials are correct.")
         }
 
         // NIO/SSH precondition or buffer overflow (Citadel .all bug)
@@ -211,19 +245,19 @@ final class SessionViewModel: Identifiable {
 
         // Network errors
         if desc.contains("could not connect") || desc.contains("network is unreachable") {
-            return String(localized: "Cannot reach \(profile.host). Check your internet connection.")
+            return String(localized: "Cannot reach \(endpoint.host). Check your internet connection.")
         }
         if desc.contains("connection refused") {
-            return String(localized: "Connection refused by \(profile.host):\(profile.port). Verify the port is correct and SSH is running.")
+            return String(localized: "Connection refused by \(endpoint.host):\(endpoint.port). Verify the port is correct and SSH is running.")
         }
         if desc.contains("timed out") || desc.contains("timeout") {
             return String(localized: "Connection timed out. The host may be down or blocked by a firewall.")
         }
         if desc.contains("no route to host") {
-            return String(localized: "No route to \(profile.host). Check the hostname or IP address.")
+            return String(localized: "No route to \(endpoint.host). Check the hostname or IP address.")
         }
         if desc.contains("name or service not known") || desc.contains("nodename nor servname") {
-            return String(localized: "Cannot resolve \(profile.host). Check the hostname.")
+            return String(localized: "Cannot resolve \(endpoint.host). Check the hostname.")
         }
 
         // SSH-specific errors
@@ -251,13 +285,13 @@ final class SessionViewModel: Identifiable {
         // iOS-specific network issues
         if desc.contains("posix") || desc.contains("errno")
             || debugDesc.contains("posix") || debugDesc.contains("errno") {
-            return String(localized: "Network error connecting to \(profile.host):\(profile.port).")
+            return String(localized: "Network error connecting to \(endpoint.host):\(endpoint.port).")
         }
 
         // Last resort: if the localizedDescription is unhelpful (e.g. "The operation couldn't be completed")
         // use the debug description which typically has more detail
         if desc.contains("operation couldn") || desc.count < 20 {
-            return String(localized: "Connection to \(profile.host) failed. Verify the host, port, and credentials.")
+            return String(localized: "Connection to \(endpoint.host) failed. Verify the host, port, and credentials.")
         }
 
         return error.localizedDescription

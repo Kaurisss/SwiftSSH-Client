@@ -2,6 +2,11 @@ name: Build unsigned IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Run simulator tests before building IPA
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -9,7 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     defaults:
@@ -25,9 +30,65 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+          xcodebuild -downloadComponent MetalToolchain
           if ! command -v xcodegen >/dev/null 2>&1; then
             brew install xcodegen
           fi
+
+      - name: Start isolated SSH fixture
+        if: inputs.run_tests
+        run: |
+          mkdir -p build SwiftSSHTests/Fixtures
+          fixture_root="$(mktemp -d "$RUNNER_TEMP/SwiftSSH-test-sshd.XXXXXX")"
+          printf '%s\n' "$fixture_root" > build/ssh-fixture-root
+          fixture_user="$(id -un)"
+          fixture_port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
+          ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/host_key"
+          ssh-keygen -q -t ed25519 -N '' -f "$fixture_root/client_key"
+          mkdir "$fixture_root/files"
+          cat > "$fixture_root/sshd_config" <<EOF
+          ListenAddress 127.0.0.1
+          Port $fixture_port
+          HostKey $fixture_root/host_key
+          PidFile $fixture_root/sshd.pid
+          AuthorizedKeysFile $fixture_root/client_key.pub
+          AllowUsers $fixture_user
+          PubkeyAuthentication yes
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+          UsePAM no
+          # Trust discovery tests must not trigger randomized admission drops.
+          MaxStartups 100
+          DisableForwarding yes
+          SetEnv LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8
+          Subsystem sftp internal-sftp -d $fixture_root/files
+          EOF
+          sudo -n /usr/sbin/sshd -t -f "$fixture_root/sshd_config"
+          sudo -n /usr/sbin/sshd -D -e -f "$fixture_root/sshd_config" > build/ssh-fixture.log 2>&1 &
+          python3 - "$fixture_root" "$fixture_user" "$fixture_port" <<'PY'
+          import json, socket, subprocess, sys, time
+          from pathlib import Path
+          root, user, port = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+          (root / 'files' / 'action-test.txt').write_text('File actions must require an explicit download.\n')
+          for attempt in range(30):
+              try:
+                  with socket.create_connection(('127.0.0.1', port), timeout=1):
+                      break
+              except OSError:
+                  if attempt == 29:
+                      raise
+                  time.sleep(0.2)
+          fixture = dict(username=user, port=port, directory=str(root / 'files'),
+                         privateKey=(root / 'client_key').read_text(),
+                         hostFingerprint=subprocess.check_output(
+                             ['ssh-keygen', '-lf', str(root / 'host_key.pub'), '-E', 'sha256'], text=True).split()[1])
+          Path('SwiftSSHTests/Fixtures/ssh-integration.json').write_text(json.dumps(fixture))
+          PY
+          ssh -F /dev/null -i "$fixture_root/client_key" -p "$fixture_port" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 \
+            -o StrictHostKeyChecking=no -o "UserKnownHostsFile=$fixture_root/known_hosts" \
+            "$fixture_user@127.0.0.1" true
 
       - name: Check configuration and generate project
         run: |
@@ -36,9 +97,20 @@ jobs:
           python3 -m unittest discover -s project/scripts -p test_local_sign_install.py -v
           xcodegen generate
 
+      - name: Compile app icon
+        run: |
+          mkdir -p build/icon-check
+          xcrun actool mssh/Resources/AppIcon.icon \
+            --compile build/icon-check \
+            --platform iphoneos --minimum-deployment-target 18.0 \
+            --app-icon AppIcon --target-device iphone --target-device ipad \
+            --output-partial-info-plist build/icon-check.plist
+
       - name: Verify Chinese and appearance in simulator
+        if: inputs.run_tests
         run: |
           mkdir -p build
+          test_status=0
           xcodebuild test \
             -project SwiftSSH.xcodeproj \
             -scheme SwiftSSH \
@@ -49,17 +121,54 @@ jobs:
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="" \
-            2>&1 | tee build/tests.log
+            2>&1 | tee build/tests.log || test_status=$?
+          if [[ "$test_status" == 0 ]]; then
+            python3 - <<'PY' || test_status=$?
+          import re
+          from pathlib import Path
+          log = Path('build/tests.log').read_text()
+          for name in ('testKeyAuthenticationAndSFTPRoundTripKeepsExistingFiles',
+                       'testCancellingSFTPTransfersCleansPartialFilesAndKeepsSSHConnected',
+                       'testRejectingUnknownHostPreventsAuthentication',
+                       'testTrustedHostDoesNotPromptAgain',
+                       'testDisconnectDuringHostKeyDecisionCannotCreateALateConnectionOrTrustEntry',
+                       'testClosingSessionAfterTrustKeepsItDisconnectedAndPreservesTheAttemptAddress',
+                       'testPTYReconnectStillDeliversInputAfterPreviousSessionCleanup',
+                       'testHostKeyDecisionCanOutlastNetworkTimeout',
+                       'testChangedHostKeyRequiresApprovalAndRejectionPreservesTrust'):
+              assert re.search(r'Test Case .*SSHIntegrationTests ' + name + r'.* passed', log), name + ' did not pass'
+          assert re.search(r'Test Case .*SSHFlowTests testLiveSSHAndFilesFlow.* passed', log), 'Live SSH UI flow did not pass'
+          PY
+          fi
           xcrun xcresulttool export attachments \
             --path build/UITests.xcresult --output-path build/ui-screenshots
+          exit "$test_status"
 
       - name: Upload interface screenshots
+        if: always() && inputs.run_tests
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: interface-screenshots
           path: build/ui-screenshots
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
+
+      - name: Stop isolated SSH fixture
+        if: always() && inputs.run_tests
+        run: |
+          if [[ -f build/ssh-fixture-root ]]; then
+            fixture_root="$(cat build/ssh-fixture-root)"
+            [[ "$fixture_root" == "$RUNNER_TEMP"/SwiftSSH-test-sshd.* ]]
+            if [[ -f "$fixture_root/sshd.pid" ]]; then
+              fixture_pid="$(cat "$fixture_root/sshd.pid")"
+              [[ "$fixture_pid" =~ ^[0-9]+$ ]]
+              fixture_command="$(ps -p "$fixture_pid" -o command= || true)"
+              if [[ -n "$fixture_command" ]]; then
+                [[ "$fixture_command" == *"$fixture_root/sshd_config"* ]]
+                sudo -n kill "$fixture_pid"
+              fi
+            fi
+          fi
 
       - name: Archive without signing
         run: |
@@ -83,6 +192,11 @@ jobs:
           test -f "$app/Info.plist"
           test -f "$app/SwiftSSH"
           test ! -f "$app/embedded.mobileprovision"
+          python3 - "$app" <<'PY'
+          import sys
+          from pathlib import Path
+          assert not list(Path(sys.argv[1]).rglob('ssh-integration.json')), 'Test credentials must not enter the application archive'
+          PY
           mkdir -p build/ipa/Payload
           ditto "$app" build/ipa/Payload/SwiftSSH.app
           (cd build/ipa && zip -qry ../SwiftSSH-unsigned.ipa Payload)
@@ -105,6 +219,7 @@ jobs:
           path: |
             build/archive.log
             build/tests.log
+            build/ssh-fixture.log
             build/UITests.xcresult
           if-no-files-found: ignore
           retention-days: 7

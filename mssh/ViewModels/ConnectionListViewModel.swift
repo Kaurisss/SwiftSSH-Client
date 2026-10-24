@@ -20,43 +20,66 @@ final class ConnectionListViewModel {
         groupName: String? = nil,
         colorTag: String? = nil,
         modelContext: ModelContext
-    ) {
-        let target: ConnectionProfile
-        if let existing = profile {
-            target = existing
-            target.label = label
-            target.host = host
-            target.port = port
-            target.username = username
-            target.authType = authType
-            target.keyID = keyID
-            target.isFavorite = isFavorite
-            target.groupName = groupName
-            target.colorTag = colorTag
-        } else {
-            target = ConnectionProfile(
-                label: label,
-                host: host,
-                port: port,
-                username: username,
-                authType: authType,
-                keyID: keyID,
-                isFavorite: isFavorite,
-                groupName: groupName,
-                colorTag: colorTag
-            )
-            modelContext.insert(target)
+    ) throws -> ConnectionProfile {
+        let endpoint = try QuickConnectTarget(host: host, port: port, username: username)
+        let host = endpoint.host
+        let username = endpoint.username
+        if authType == .key && (keyID?.isEmpty ?? true) { throw ConnectionSaveError.missingKey }
+
+        let target = profile ?? ConnectionProfile(label: label, host: host, port: port, username: username)
+        let previous = (target.label, target.host, target.port, target.username, target.authType,
+                        target.keyID, target.isFavorite, target.groupName, target.colorTag)
+        let writesPassword = authType == .password && !(password?.isEmpty ?? true)
+        let previousPassword = writesPassword ? KeychainService.getPassword(for: target.syncID) : nil
+        if writesPassword, let password {
+            try KeychainService.savePassword(for: target.syncID, password: password)
         }
 
-        // Save to SwiftData first so the model is persisted
-        try? modelContext.save()
+        target.label = label
+        target.host = host
+        target.port = port
+        target.username = username
+        target.authType = authType
+        target.keyID = keyID
+        target.isFavorite = isFavorite
+        target.groupName = groupName
+        target.colorTag = colorTag
+        if profile == nil { modelContext.insert(target) }
+        do {
+            try modelContext.save()
+        } catch {
+            // Restore this draft only; a context-wide rollback could discard another session's changes.
+            (target.label, target.host, target.port, target.username, target.authType,
+             target.keyID, target.isFavorite, target.groupName, target.colorTag) = previous
+            if profile == nil { modelContext.delete(target) }
+            if writesPassword {
+                if let previousPassword {
+                    do {
+                        try KeychainService.savePassword(for: target.syncID, password: previousPassword)
+                    } catch {
+                        throw ConnectionSaveError.passwordRestoreFailed
+                    }
+                } else {
+                    KeychainService.deleteItem(account: "pwd-\(target.syncID)")
+                }
+            }
+            throw error
+        }
+        return target
+    }
+}
 
-        // Credentials stay in the device-only Keychain.
-        if authType == .password, let password, !password.isEmpty {
-            try? KeychainService.savePassword(
-                for: target.syncID,
-                password: password
-            )
+enum ConnectionSaveError: LocalizedError {
+    case invalidEndpoint, missingKey, passwordRestoreFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidEndpoint:
+            String(localized: "Enter a host, username, and port from 1 to 65535.")
+        case .missingKey:
+            String(localized: "Select an SSH key before saving.")
+        case .passwordRestoreFailed:
+            String(localized: "The connection was not saved and its previous password could not be restored. Enter the password again and retry.")
         }
     }
 }

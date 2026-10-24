@@ -13,6 +13,12 @@ struct SnippetsView: View {
 
     @State private var editingSnippet: Snippet?
     @State private var showCreateSheet = false
+    @State private var searchText = ""
+    @State private var snippetToDelete: Snippet?
+
+    private var filteredSnippets: [Snippet] {
+        Snippet.filtered(snippets, query: searchText)
+    }
 
     var body: some View {
         Group {
@@ -20,7 +26,7 @@ struct SnippetsView: View {
                 emptyState
             } else {
                 List {
-                    ForEach(snippets) { snippet in
+                    ForEach(filteredSnippets) { snippet in
                         Button {
                             editingSnippet = snippet
                         } label: {
@@ -30,8 +36,7 @@ struct SnippetsView: View {
                         .listRowBackground(AppColors.surface)
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                modelContext.delete(snippet)
-                                try? modelContext.save()
+                                snippetToDelete = snippet
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -44,18 +49,37 @@ struct SnippetsView: View {
         }
         .background(AppColors.background)
         .navigationTitle("Snippets")
+        .searchable(text: $searchText, prompt: "Search Commands")
+        .overlay {
+            if !snippets.isEmpty && filteredSnippets.isEmpty {
+                ContentUnavailableView {
+                    Label("No Matching Commands", systemImage: "magnifyingglass")
+                } actions: {
+                    Button("Clear Search") { searchText = "" }
+                }
+            }
+        }
         .iOSOnlyNavigationBarTitleDisplayMode()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showCreateSheet = true
                 } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.title3)
+                    Label("Add Snippet", systemImage: "plus")
                 }
+                .accessibilityIdentifier("snippet-add")
             }
         }
+        .alert("Delete \(snippetToDelete?.displayLabel ?? "")?", isPresented: .init(
+            get: { snippetToDelete != nil }, set: { if !$0 { snippetToDelete = nil } }
+        ), presenting: snippetToDelete) { snippet in
+            Button("Delete", role: .destructive) {
+                modelContext.delete(snippet)
+                try? modelContext.save()
+                snippetToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { snippetToDelete = nil }
+        } message: { _ in EmptyView() }
         .sheet(isPresented: $showCreateSheet) {
             SnippetEditorView(snippet: nil)
         }
@@ -72,11 +96,6 @@ struct SnippetsView: View {
             Text("No Snippets")
                 .font(AppFonts.subheading)
                 .foregroundStyle(AppColors.textSecondary)
-            Text("Save commands you run often, then send them to any active session with one tap.")
-                .font(.caption)
-                .foregroundStyle(AppColors.textTertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, AppSpacing.xl)
             Button {
                 showCreateSheet = true
             } label: {
@@ -86,6 +105,7 @@ struct SnippetsView: View {
                     .padding(.vertical, AppSpacing.sm)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppColors.onEmphasis)
             .tint(AppColors.accent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -100,7 +120,7 @@ private struct SnippetRow: View {
     var body: some View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                AppShape.container
                     .fill(AppColors.accentDim)
                     .frame(width: 36, height: 36)
                 Image(systemName: "chevron.right.circle")
@@ -109,26 +129,22 @@ private struct SnippetRow: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(snippet.label.isEmpty ? "(untitled)" : snippet.label)
+                Text(snippet.displayLabel)
                     .font(.system(.subheadline, design: .default).weight(.medium))
                     .foregroundStyle(AppColors.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 Text(snippet.command)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(AppColors.textSecondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
 
             Spacer()
 
-            if snippet.useCount > 0 {
-                Text("×\(snippet.useCount)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(AppColors.accent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppColors.accentDim)
-                    .clipShape(Capsule())
+            if snippet.command.hasSuffix("\n") || snippet.command.hasSuffix("\r") {
+                Image(systemName: "return")
+                    .foregroundStyle(AppColors.textSecondary)
+                    .accessibilityLabel("Runs on Insert")
             }
         }
         .padding(.vertical, 4)
@@ -145,9 +161,12 @@ struct SnippetEditorView: View {
 
     @State private var label = ""
     @State private var command = ""
+    @State private var saveError: String?
 
-    private var isValid: Bool {
-        !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    init(snippet: Snippet?) {
+        self.snippet = snippet
+        _label = State(initialValue: snippet?.label ?? "")
+        _command = State(initialValue: snippet?.command ?? "")
     }
 
     var body: some View {
@@ -157,10 +176,9 @@ struct SnippetEditorView: View {
                     TextField("Label", text: $label, prompt: Text("e.g. Tail syslog").foregroundStyle(AppColors.textTertiary))
                         .iOSOnlyTextInputAutocapitalization()
                         .autocorrectionDisabled()
+                        .accessibilityIdentifier("snippet-label")
                 } header: {
                     Text("Label")
-                } footer: {
-                    Text("A short name shown in the snippet picker.")
                 }
 
                 Section {
@@ -170,10 +188,10 @@ struct SnippetEditorView: View {
                         .scrollContentBackground(.hidden)
                         .iOSOnlyTextInputAutocapitalization()
                         .autocorrectionDisabled()
+                        .accessibilityLabel("Command")
+                        .accessibilityIdentifier("snippet-command")
                 } header: {
                     Text("Command")
-                } footer: {
-                    Text("Sent verbatim to the active session. Add a trailing newline to auto-execute.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -187,34 +205,27 @@ struct SnippetEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         save()
-                        dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(!isValid)
+                    .accessibilityIdentifier("snippet-save")
                 }
             }
-            .onAppear {
-                if let s = snippet {
-                    label = s.label
-                    command = s.command
-                }
-            }
+            .alert("Unable to Save Command", isPresented: .init(
+                get: { saveError != nil }, set: { if !$0 { saveError = nil } }
+            )) {
+                Button("Close", role: .cancel) { saveError = nil }
+            } message: { Text(saveError ?? "") }
         }
         .appTheme()
     }
 
     private func save() {
-        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cmd = command.trimmingCharacters(in: .newlines)
-
-        if let existing = snippet {
-            existing.label = trimmedLabel
-            existing.command = cmd
-        } else {
-            let new = Snippet(label: trimmedLabel, command: cmd)
-            modelContext.insert(new)
+        do {
+            try Snippet.save(snippet, label: label, command: command, in: modelContext)
+            dismiss()
+        } catch {
+            saveError = String(localized: "Save failed. Your draft has been kept; try again. \(error.localizedDescription)")
         }
-        try? modelContext.save()
     }
 }
 
@@ -231,26 +242,27 @@ struct SnippetPickerView: View {
     ]) private var snippets: [Snippet]
 
     let onPick: (Snippet) -> Void
+    @State private var searchText = ""
+    @State private var showCreateSheet = false
+    @State private var editingSnippet: Snippet?
+
+    private var filteredSnippets: [Snippet] { Snippet.filtered(snippets, query: searchText) }
 
     var body: some View {
         NavigationStack {
             Group {
                 if snippets.isEmpty {
-                    VStack(spacing: AppSpacing.md) {
-                        Image(systemName: "text.badge.plus")
-                            .font(.system(size: 32))
-                            .foregroundStyle(AppColors.textTertiary)
-                        Text("No Snippets Yet")
-                            .font(AppFonts.subheading)
-                            .foregroundStyle(AppColors.textSecondary)
-                        Text("Add snippets in Settings → Snippets.")
-                            .font(.caption)
-                            .foregroundStyle(AppColors.textTertiary)
+                    ContentUnavailableView {
+                        Label("No Snippets", systemImage: "text.badge.plus")
+                    } actions: {
+                        Button("Add Snippet") { showCreateSheet = true }
+                            .buttonStyle(.borderedProminent)
+                            .foregroundStyle(AppColors.onEmphasis)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(AppColors.background)
                 } else {
-                    List(snippets) { snippet in
+                    List(filteredSnippets) { snippet in
                         Button {
                             // Bump use stats
                             snippet.useCount += 1
@@ -263,19 +275,37 @@ struct SnippetPickerView: View {
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(AppColors.surface)
+                        .contextMenu {
+                            Button("Edit", systemImage: "pencil") { editingSnippet = snippet }
+                        }
                     }
                     .scrollContentBackground(.hidden)
                     .background(AppColors.background)
                 }
             }
             .background(AppColors.background)
+            .searchable(text: $searchText, prompt: "Search Commands")
+            .overlay {
+                if !snippets.isEmpty && filteredSnippets.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Matching Commands", systemImage: "magnifyingglass")
+                    } actions: {
+                        Button("Clear Search") { searchText = "" }
+                    }
+                }
+            }
             .navigationTitle("Snippets")
             .iOSOnlyNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Add Snippet", systemImage: "plus") { showCreateSheet = true }
+                }
             }
+            .sheet(isPresented: $showCreateSheet) { SnippetEditorView(snippet: nil) }
+            .sheet(item: $editingSnippet) { snippet in SnippetEditorView(snippet: snippet) }
         }
         .appTheme()
     }

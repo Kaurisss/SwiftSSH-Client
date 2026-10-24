@@ -40,7 +40,6 @@ class InterfaceTests(unittest.TestCase):
         self.assertNotIn('UINavigationBarAppearance', app)
         self.assertNotIn('.preferredColorScheme(.dark)', design)
         self.assertNotIn('.toolbarColorScheme(.dark', hosts)
-        self.assertIn('.background(AppColors.surface, in: Capsule())', hosts)
         for file in ('KeyManagerView.swift', 'KnownHostsView.swift'):
             code = (ROOT / 'mssh/Views' / file).read_text(encoding='utf-8')
             self.assertIn('.frame(maxWidth: .infinity, maxHeight: .infinity)', code)

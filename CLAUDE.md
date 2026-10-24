@@ -33,3 +33,8 @@ schema changes. PortForward and SSHKey.syncAcrossDevices remain as inert metadat
 SSH/terminal behavior stays in the existing Services/ViewModels/Terminal layers.
 Keep the serialized terminal AsyncStream writer, host-key reject-on-disconnect,
 and meaningful terminal error messages. Do not replace them with per-key Tasks.
+
+Citadel 0.12.1 fixes the handshake deadline at 10 seconds. Keep host-key approval
+outside the timed handshake, then reconnect with the exact approved key pinned.
+Ignore duplicate PTY close only after output handling finishes; retain setup and
+output errors. Each connection attempt owns its client, prompt and write stream.

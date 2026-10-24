@@ -2,290 +2,364 @@ import SwiftUI
 import Citadel
 
 struct SFTPBrowserView: View {
+    struct Connection: Identifiable {
+        let id = UUID()
+        let client: SSHClient
+    }
     @State private var viewModel: SFTPViewModel
+    @State private var inspectedFile: SFTPFileItem?
     @Environment(\.dismiss) private var dismiss
 
     init(client: SSHClient) {
-        _viewModel = State(initialValue: SFTPViewModel(client: client))
+        self.init(viewModel: SFTPViewModel(client: client))
+    }
+
+    init(viewModel: SFTPViewModel) {
+        _viewModel = State(initialValue: viewModel)
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppColors.background
-                    .ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    breadcrumbBar
-                    fileList
+            VStack(spacing: 0) {
+                breadcrumbBar.disabled(viewModel.isBusy)
+                if let error = viewModel.directoryError {
+                    VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(AppColors.textPrimary)
+                            .textSelection(.enabled)
+                        Button("Retry") { Task { await viewModel.retryDirectory() } }
+                            .buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(AppSpacing.lg)
+                    .background(AppColors.surface)
                 }
-
-                // Transfer overlay
-                if viewModel.isTransferring {
-                    Color.black.opacity(0.5)
-                        .ignoresSafeArea()
-
-                    SFTPTransferView(
-                        fileName: viewModel.transferFileName,
-                        progress: viewModel.transferProgress,
-                        transferType: viewModel.transferType
-                    )
-                }
+                fileList
+                    .disabled(viewModel.isBusy)
+                    .overlay {
+                        if viewModel.isLoading && !viewModel.hasLoadedInitialDirectory {
+                            ProgressView().accessibilityLabel("Loading")
+                        }
+                    }
             }
+            .background(AppColors.background)
             .navigationTitle("Files")
             .iOSOnlyNavigationBarTitleDisplayMode()
-            #if os(iOS)
-            .toolbarBackground(AppColors.surface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.medium)
+            .searchable(text: $viewModel.searchText, prompt: "Search Files")
+            .toolbar { browserToolbar }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if viewModel.isTransferring {
+                    SFTPTransferView(fileName: viewModel.transferFileName,
+                                     transferType: viewModel.transferType,
+                                     isCancelling: viewModel.isCancellingTransfer,
+                                     onCancel: viewModel.cancelTransfer)
                 }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        viewModel.showNewFolderAlert = true
-                    } label: {
-                        Image(systemName: "folder.badge.plus")
-                            .font(.system(size: 14))
-                    }
-
-                    Button {
-                        viewModel.showFileImporter = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14))
-                    }
-                }
-                #if os(iOS)
-                ToolbarItem(placement: .bottomBar) {
-                    HStack {
-                        Text("\(viewModel.files.count) items")
-                            .font(AppFonts.monoCaption)
-                            .foregroundStyle(AppColors.textTertiary)
-                        Spacer()
-                    }
-                }
-                #endif
             }
-            .task {
-                await viewModel.loadInitialDirectory()
-            }
-            .refreshable {
-                await viewModel.refresh()
-            }
+            .task { await viewModel.loadInitialDirectory() }
             .alert("New Folder", isPresented: $viewModel.showNewFolderAlert) {
                 TextField("Folder name", text: $viewModel.newFolderName)
-                Button("Cancel", role: .cancel) {
-                    viewModel.newFolderName = ""
-                }
-                Button("Create") {
-                    Task { await viewModel.createDirectory() }
-                }
-            } message: {
-                Text("Enter a name for the new folder.")
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Cancel", role: .cancel) { viewModel.newFolderName = "" }
+                Button("Create") { Task { await viewModel.createDirectory() } }
             }
             .alert("Error", isPresented: .init(
                 get: { viewModel.error != nil },
                 set: { if !$0 { viewModel.error = nil } }
             )) {
-                Button("OK") { viewModel.error = nil }
+                Button("Close", role: .cancel) { viewModel.error = nil }
             } message: {
                 Text(viewModel.error ?? "")
             }
-            .confirmationDialog(
+            .alert(
                 "Delete \(viewModel.itemToDelete?.name ?? "")?",
                 isPresented: $viewModel.showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
+                presenting: viewModel.itemToDelete
+            ) { item in
                 Button("Delete", role: .destructive) {
-                    if let item = viewModel.itemToDelete {
-                        Task { await viewModel.delete(item: item) }
-                    }
+                    Task { await viewModel.delete(item: item) }
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                if let item = viewModel.itemToDelete {
-                    Text(item.isDirectory
-                         ? String(localized: "This will delete the directory. It must be empty.")
-                         : String(localized: "This file will be permanently deleted."))
-                }
+                Button("Cancel", role: .cancel) { viewModel.itemToDelete = nil }
+            } message: { item in
+                Text(item.isDirectory
+                     ? String(localized: "This will delete the directory. It must be empty.")
+                     : String(localized: "This file will be permanently deleted."))
             }
-            .fileImporter(
-                isPresented: $viewModel.showFileImporter,
-                allowedContentTypes: [.data],
-                allowsMultipleSelection: false
-            ) { result in
+            .fileImporter(isPresented: $viewModel.showFileImporter,
+                          allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
                 switch result {
                 case .success(let urls):
-                    if let url = urls.first {
-                        Task { await viewModel.upload(url: url) }
-                    }
+                    if let url = urls.first { Task { await viewModel.upload(url: url) } }
                 case .failure(let error):
-                    viewModel.error = "File picker error: \(error.localizedDescription)"
+                    viewModel.error = String(localized: "File picker error: \(error.localizedDescription)")
                 }
             }
+            .sheet(item: $viewModel.downloadedFile, onDismiss: viewModel.discardDownload) { file in
+                NavigationStack {
+                    VStack(spacing: AppSpacing.xl) {
+                        Image(systemName: "doc.fill")
+                            .font(.largeTitle)
+                            .foregroundStyle(AppColors.accent)
+                            .accessibilityHidden(true)
+                        Text(file.url.lastPathComponent)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                            .multilineTextAlignment(.center)
+                        ShareLink(item: file.url) {
+                            Label("Save or Share", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .foregroundStyle(AppColors.onEmphasis)
+                    }
+                    .padding(AppSpacing.xl)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppColors.background)
+                    .navigationTitle("Downloaded File")
+                    .iOSOnlyNavigationBarTitleDisplayMode()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { viewModel.downloadedFile = nil }
+                        }
+                    }
+                }
+            }
+            .sheet(item: $inspectedFile) { item in SFTPFileInfoView(item: item) }
         }
+        .interactiveDismissDisabled(viewModel.isBusy)
+        .onDisappear { viewModel.cancelTransfer() }
         .appTheme()
     }
 
-    // MARK: - Breadcrumb Bar
+    @ToolbarContentBuilder
+    private var browserToolbar: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Done") { dismiss() }
+                .disabled(viewModel.isBusy)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button {
+                    viewModel.showFileImporter = true
+                } label: {
+                    Label("Upload File", systemImage: "square.and.arrow.up")
+                }
+                .disabled(!viewModel.hasLoadedInitialDirectory)
+                Button {
+                    viewModel.showNewFolderAlert = true
+                } label: {
+                    Label("New Folder", systemImage: "folder.badge.plus")
+                }
+                .disabled(!viewModel.hasLoadedInitialDirectory)
+                Button {
+                    Task { await viewModel.refresh() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                Toggle("Show Hidden Files", isOn: $viewModel.showsHiddenFiles)
+                Picker("Sort By", selection: $viewModel.sortOrder) {
+                    ForEach(SFTPFileItem.SortOrder.allCases) { order in
+                        Text(order.title).tag(order)
+                    }
+                }
+            } label: {
+                Label("File Actions", systemImage: "ellipsis.circle")
+            }
+            .disabled(viewModel.isBusy)
+        }
+    }
 
     private var breadcrumbBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                Button {
-                    Task { await viewModel.goBack() }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AppColors.accent)
-                }
-                .disabled(viewModel.pathHistory.isEmpty)
+        HStack(spacing: 0) {
+            Button {
+                Task { await viewModel.goBack() }
+            } label: {
+                Label("Back", systemImage: "chevron.backward")
+                    .labelStyle(.iconOnly)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .disabled(viewModel.pathHistory.isEmpty)
 
-                ForEach(Array(viewModel.breadcrumbs.enumerated()), id: \.element.id) { index, crumb in
-                    if index > 0 {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 8))
-                            .foregroundStyle(AppColors.textTertiary)
-                    }
-                    Button {
-                        Task { await viewModel.navigateToBreadcrumb(crumb.path) }
-                    } label: {
-                        Text(crumb.name)
-                            .font(.system(size: 12, design: .monospaced))
-                            .fontWeight(index == viewModel.breadcrumbs.count - 1 ? .semibold : .regular)
-                            .foregroundStyle(index == viewModel.breadcrumbs.count - 1 ? AppColors.textPrimary : AppColors.textSecondary)
+            ScrollView(.horizontal) {
+                HStack(spacing: AppSpacing.xs) {
+                    ForEach(viewModel.breadcrumbs) { crumb in
+                        if crumb.path != "/" {
+                            Image(systemName: "chevron.forward")
+                                .font(.caption2)
+                                .accessibilityHidden(true)
+                        }
+                        Button {
+                            Task { await viewModel.navigate(to: crumb.path) }
+                        } label: {
+                            Text(crumb.name)
+                                .font(.callout.monospaced())
+                                .fontWeight(crumb.path == viewModel.currentPath ? .semibold : .regular)
+                                .padding(.horizontal, AppSpacing.xs)
+                                .frame(minHeight: 44)
+                        }
+                        .accessibilityLabel(crumb.path)
                     }
                 }
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.sm)
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 24, height: 24)
+                .opacity(viewModel.hasLoadedInitialDirectory && (viewModel.isLoading || viewModel.isMutating) ? 1 : 0)
+                .accessibilityLabel("Loading")
+                .accessibilityHidden(!viewModel.hasLoadedInitialDirectory || (!viewModel.isLoading && !viewModel.isMutating))
         }
+        .padding(.trailing, AppSpacing.lg)
         .background(AppColors.surface)
-        .overlay(
-            Rectangle()
-                .frame(height: 0.5)
-                .foregroundStyle(AppColors.border),
-            alignment: .bottom
-        )
     }
-
-    // MARK: - File List
 
     private var fileList: some View {
-        Group {
-            if viewModel.isLoading && viewModel.files.isEmpty {
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .tint(AppColors.accent)
-                    Text("Loading...")
-                        .font(AppFonts.monoCaption)
-                        .foregroundStyle(AppColors.textSecondary)
-                        .padding(.top, AppSpacing.sm)
-                    Spacer()
+        List {
+            if viewModel.hasLoadedInitialDirectory && viewModel.currentPath != "/" {
+                Button {
+                    Task { await viewModel.goUp() }
+                } label: {
+                    Label("Parent Folder", systemImage: "arrow.up")
                 }
-            } else if viewModel.files.isEmpty && !viewModel.isLoading {
-                VStack {
-                    Spacer()
-                    Image(systemName: "folder")
-                        .font(.system(size: 36))
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text("Empty Directory")
-                        .font(AppFonts.subheading)
-                        .foregroundStyle(AppColors.textSecondary)
-                        .padding(.top, AppSpacing.sm)
-                    Spacer()
-                }
-            } else {
-                List {
-                    if viewModel.currentPath != "/" {
-                        Button {
-                            Task { await viewModel.goUp() }
-                        } label: {
-                            HStack(spacing: AppSpacing.md) {
-                                Image(systemName: "arrow.up.doc.fill")
-                                    .foregroundStyle(AppColors.textTertiary)
-                                    .frame(width: 24)
-                                Text("..")
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundStyle(AppColors.textSecondary)
-                                Spacer()
-                            }
-                        }
-                        .listRowBackground(AppColors.surface)
-                    }
-
-                    ForEach(viewModel.files) { item in
-                        fileRow(item)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    viewModel.itemToDelete = item
-                                    viewModel.showDeleteConfirmation = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-
-                                if !item.isDirectory {
-                                    Button {
-                                        Task { await viewModel.download(item: item) }
-                                    } label: {
-                                        Label("Download", systemImage: "arrow.down.circle")
-                                    }
-                                    .tint(AppColors.accent)
-                                }
-                            }
-                            .listRowBackground(AppColors.surface)
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                .listRowBackground(AppColors.surface)
             }
+            ForEach(viewModel.visibleFiles) { item in
+                fileRow(item)
+                    .contextMenu { fileActions(item) }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) { fileActions(item) }
+                    .listRowBackground(AppColors.surface)
+            }
+            if viewModel.visibleFiles.isEmpty && !viewModel.isBusy && viewModel.directoryError == nil {
+                ContentUnavailableView {
+                    Label {
+                        if viewModel.files.isEmpty {
+                            Text("Empty Directory")
+                        } else {
+                            Text("No Matching Files")
+                        }
+                    } icon: {
+                        Image(systemName: viewModel.files.isEmpty ? "folder" : "magnifyingglass")
+                    }
+                } actions: {
+                    if !viewModel.searchText.isEmpty || !viewModel.files.isEmpty {
+                        Button("Show All Files") {
+                            viewModel.searchText = ""
+                            viewModel.showsHiddenFiles = true
+                        }
+                    } else {
+                        Button("Upload File") { viewModel.showFileImporter = true }
+                    }
+                }
+                .disabled(!viewModel.hasLoadedInitialDirectory)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .refreshable { await viewModel.refresh() }
+    }
+
+    @ViewBuilder
+    private func fileRow(_ item: SFTPFileItem) -> some View {
+        if item.isDirectory {
+            Button {
+                Task { await viewModel.navigate(to: item.path) }
+            } label: {
+                fileLabel(item)
+            }
+            .accessibilityHint("Open Folder")
+        } else {
+            Menu {
+                fileActions(item)
+            } label: {
+                fileLabel(item)
+            }
+            .accessibilityIdentifier("sftp-file-\(item.name)")
+            .accessibilityHint("File Actions")
         }
     }
 
-    // MARK: - File Row
-
-    private func fileRow(_ item: SFTPFileItem) -> some View {
-        Button {
-            if item.isDirectory {
-                Task { await viewModel.navigate(to: item.path) }
-            } else {
-                Task { await viewModel.download(item: item) }
+    private func fileLabel(_ item: SFTPFileItem) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            Image(systemName: item.iconName)
+                .foregroundStyle(item.iconColor)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(item.name)
+                    .font(.body.monospaced())
+                    .foregroundStyle(AppColors.textPrimary)
+                    .multilineTextAlignment(.leading)
+                if !item.isDirectory {
+                    Text(item.formattedSize)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                if let modifiedDate = item.modifiedDate {
+                    Text(modifiedDate, format: .dateTime.year().month(.abbreviated).day().hour().minute())
+                        .font(.caption)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
             }
+            Spacer(minLength: AppSpacing.sm)
+            Image(systemName: item.isDirectory ? "chevron.forward" : "ellipsis")
+                .foregroundStyle(AppColors.textSecondary)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, AppSpacing.xs)
+    }
+
+    @ViewBuilder
+    private func fileActions(_ item: SFTPFileItem) -> some View {
+        Button("File Details", systemImage: "info.circle") { inspectedFile = item }
+        if !item.isDirectory {
+            Button {
+                Task { await viewModel.download(item: item) }
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
+            .tint(AppColors.accent)
+        }
+        Button(role: .destructive) {
+            viewModel.itemToDelete = item
+            viewModel.showDeleteConfirmation = true
         } label: {
-            HStack(spacing: AppSpacing.md) {
-                Image(systemName: item.iconName)
-                    .foregroundStyle(item.iconColor)
-                    .frame(width: 24)
+            Label("Delete", systemImage: "trash")
+        }
+    }
+}
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name)
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(1)
+struct SFTPFileInfoView: View {
+    let item: SFTPFileItem
+    @Environment(\.dismiss) private var dismiss
 
-                    HStack(spacing: 8) {
-                        if !item.isDirectory {
-                            Text(item.formattedSize)
-                        }
-                        Text(item.formattedDate)
-                        Text(item.formattedPermissions)
+    var body: some View {
+        NavigationStack {
+            Form {
+                LabeledContent("Name") {
+                    Text(item.name).textSelection(.enabled)
+                }
+                LabeledContent("Path") {
+                    Text(item.path)
+                        .font(.callout.monospaced())
+                        .textSelection(.enabled)
+                }
+                if !item.isDirectory {
+                    LabeledContent("Size", value: item.formattedSize)
+                }
+                if let date = item.modifiedDate {
+                    LabeledContent("Date Modified") {
+                        Text(date, format: .dateTime.year().month(.abbreviated).day().hour().minute())
                     }
-                    .font(AppFonts.monoCaption)
-                    .foregroundStyle(AppColors.textTertiary)
                 }
-
-                Spacer()
-
-                if item.isDirectory {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
+                LabeledContent("Permissions", value: item.formattedPermissions)
+            }
+            .navigationTitle("File Details")
+            .iOSOnlyNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        .appTheme()
     }
 }

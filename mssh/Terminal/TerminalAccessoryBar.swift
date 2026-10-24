@@ -26,6 +26,8 @@ final class TerminalAccessoryBar: UIView {
         KeyDef("Esc", [0x1B]),
         KeyDef("Tab", [0x09]),
         KeyDef("Ctrl", [], isModifier: true),
+        KeyDef("Ctrl C", [0x03]),
+        KeyDef("Ctrl D", [0x04]),
         KeyDef("|", [0x7C]),
         KeyDef("~", [0x7E]),
         KeyDef("/", [0x2F]),
@@ -53,7 +55,7 @@ final class TerminalAccessoryBar: UIView {
 
     init(terminal: TerminalView) {
         self.terminal = terminal
-        super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 46))
+        super.init(frame: CGRect(x: 0, y: 0, width: terminal.bounds.width, height: 46))
         autoresizingMask = .flexibleWidth
         setupAppearance()
         setupKeys()
@@ -89,9 +91,9 @@ final class TerminalAccessoryBar: UIView {
         let dismissButton = makeKeyButton(
             title: nil,
             icon: "chevron.down",
-            width: 40,
             action: #selector(dismissKeyboard)
         )
+        dismissButton.accessibilityLabel = String(localized: "Hide Keyboard")
         addSubview(dismissButton)
 
         // Snippets button — posts a notification that the active terminal view
@@ -99,10 +101,10 @@ final class TerminalAccessoryBar: UIView {
         let snippetButton = makeKeyButton(
             title: nil,
             icon: "text.badge.plus",
-            width: 40,
             action: #selector(openSnippetPicker)
         )
         snippetButton.tintColor = accentColor
+        snippetButton.accessibilityLabel = String(localized: "Snippets")
         addSubview(snippetButton)
 
         NSLayoutConstraint.activate([
@@ -143,7 +145,7 @@ final class TerminalAccessoryBar: UIView {
             let isArrow = keyDef.label.unicodeScalars.first.map { $0.value >= 0x2190 && $0.value <= 0x2193 } ?? false
             let minWidth: CGFloat = isArrow ? 36 : (keyDef.label.count > 2 ? 44 : 34)
 
-            let button = UIButton(type: .system)
+            let button = TerminalAccessoryKeyButton(type: .system)
             button.setTitle(keyDef.label, for: .normal)
 
             if keyDef.isModifier {
@@ -158,7 +160,7 @@ final class TerminalAccessoryBar: UIView {
             button.tag = index
             button.addTarget(self, action: #selector(keyTapped(_:)), for: .touchUpInside)
             button.backgroundColor = keyColor
-            button.layer.cornerRadius = 5
+            button.layer.cornerCurve = .continuous
             button.layer.borderWidth = 0.5
             button.layer.borderColor = borderColor.cgColor
 
@@ -176,8 +178,8 @@ final class TerminalAccessoryBar: UIView {
         }
     }
 
-    private func makeKeyButton(title: String?, icon: String?, width: CGFloat, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
+    private func makeKeyButton(title: String?, icon: String?, action: Selector) -> UIButton {
+        let button = TerminalAccessoryKeyButton(type: .system)
         if let title = title {
             button.setTitle(title, for: .normal)
             button.titleLabel?.font = .monospacedSystemFont(ofSize: 14, weight: .medium)
@@ -190,7 +192,7 @@ final class TerminalAccessoryBar: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: action, for: .touchUpInside)
         button.backgroundColor = keyColor
-        button.layer.cornerRadius = 5
+        button.layer.cornerCurve = .continuous
         button.layer.borderWidth = 0.5
         button.layer.borderColor = borderColor.cgColor
         return button
@@ -214,15 +216,7 @@ final class TerminalAccessoryBar: UIView {
 
         if keyDef.isModifier {
             ctrlActive.toggle()
-            UIView.animate(withDuration: 0.12) {
-                self.ctrlButton?.backgroundColor = self.ctrlActive
-                    ? self.accentColor.withAlphaComponent(0.25)
-                    : self.keyColor
-                self.ctrlButton?.tintColor = self.ctrlActive ? self.accentColor : self.keyTextColor
-                self.ctrlButton?.layer.borderColor = self.ctrlActive
-                    ? self.accentColor.withAlphaComponent(0.5).cgColor
-                    : self.borderColor.cgColor
-            }
+            updateCtrlAppearance()
             return
         }
 
@@ -235,26 +229,25 @@ final class TerminalAccessoryBar: UIView {
         } else {
             terminal.terminalDelegate?.send(source: terminal, data: ArraySlice(keyDef.bytes))
         }
-
-        // Subtle press animation
-        UIView.animate(withDuration: 0.06, animations: {
-            sender.transform = CGAffineTransform(scaleX: 0.93, y: 0.93)
-            sender.alpha = 0.7
-        }) { _ in
-            UIView.animate(withDuration: 0.06) {
-                sender.transform = .identity
-                sender.alpha = 1.0
-            }
-        }
     }
 
     private func deactivateCtrl() {
         ctrlActive = false
-        UIView.animate(withDuration: 0.12) {
-            self.ctrlButton?.backgroundColor = self.keyColor
-            self.ctrlButton?.tintColor = self.keyTextColor
-            self.ctrlButton?.layer.borderColor = self.borderColor.cgColor
-        }
+        updateCtrlAppearance()
+    }
+
+    private func updateCtrlAppearance() {
+        ctrlButton?.isSelected = ctrlActive
+        ctrlButton?.backgroundColor = ctrlActive ? accentColor.withAlphaComponent(0.25) : keyColor
+        ctrlButton?.tintColor = ctrlActive ? accentColor : keyTextColor
+        ctrlButton?.layer.borderColor = ctrlActive ? accentColor.withAlphaComponent(0.5).cgColor : borderColor.cgColor
+    }
+}
+
+private final class TerminalAccessoryKeyButton: UIButton {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = min(AppShape.cornerRadius, min(bounds.width, bounds.height) / 2)
     }
 }
 

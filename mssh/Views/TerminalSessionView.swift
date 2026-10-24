@@ -4,10 +4,9 @@ struct TerminalSessionView: View {
     @Bindable var session: SessionViewModel
     @Environment(SessionManager.self) private var sessionManager
     @Environment(\.modelContext) private var modelContext
-    @State private var showSFTPBrowser = false
+    @State private var fileBrowser: SFTPBrowserView.Connection?
     @State private var showConnectionInfo = false
     @State private var showSnippetPicker = false
-    @State private var connectionStartTime = Date()
 
     var body: some View {
         ZStack {
@@ -15,7 +14,8 @@ struct TerminalSessionView: View {
             AppColors.terminalBg
                 .ignoresSafeArea()
 
-            TerminalViewWrapper(bridge: session.bridge)
+            TerminalViewWrapper(bridge: session.bridge,
+                                isFocused: fileBrowser == nil && !showSnippetPicker && !showConnectionInfo)
                 .ignoresSafeArea(.container, edges: .bottom)
 
             // Connection error overlay — show whenever the session isn't
@@ -23,14 +23,13 @@ struct TerminalSessionView: View {
             // The earlier strict "Connection failed" / "Error:" prefix-match
             // missed our pre-flight errors (KeyParseError, AuthResolutionError),
             // leaving the user with a blank cursor and no explanation.
-            if shouldShowErrorOverlay {
+            if shouldShowStatusOverlay {
                 VStack {
                     Spacer()
-                    errorBanner
+                    statusBanner
                         .padding(.horizontal, AppSpacing.lg)
                         .padding(.bottom, AppSpacing.xxl)
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             // Host key verification prompt
@@ -40,17 +39,16 @@ struct TerminalSessionView: View {
 
                 HostKeyPromptView(
                     promptType: promptType,
+                    host: session.endpoint.host,
+                    port: session.endpoint.port,
                     onAccept: { session.acceptHostKey() },
                     onReject: { session.rejectHostKey() }
                 )
-                .transition(.scale.combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: session.statusMessage)
         .onAppear {
             session.modelContainer = modelContext.container
-            connectionStartTime = Date()
-            if !session.isConnected && session.statusMessage != String(localized: "Connecting...") {
+            if session.connectionAttempts == 0 && session.sshClient == nil {
                 Task { await session.connect() }
             }
         }
@@ -60,6 +58,14 @@ struct TerminalSessionView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         #endif
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Files", systemImage: "folder") {
+                    if let client = session.sshClient { fileBrowser = .init(client: client) }
+                }
+                .labelStyle(.titleAndIcon)
+                .accessibilityIdentifier("terminal-files")
+                .disabled(!session.isConnected || session.sshClient == nil)
+            }
             ToolbarItem(placement: .principal) {
                 Button {
                     showConnectionInfo = true
@@ -71,54 +77,40 @@ struct TerminalSessionView: View {
                             .foregroundStyle(AppColors.textPrimary)
                     }
                 }
+                .accessibilityLabel(Text("Connection Details: \(session.title)"))
+                .accessibilityIdentifier("connection-details")
+                .accessibilityValue(session.isConnected ? String(localized: "Connected") : session.statusMessage)
                 .popover(isPresented: $showConnectionInfo) {
                     ConnectionInfoPopover(
                         session: session,
-                        connectedSince: connectionStartTime
+                        connectedSince: session.connectedAt ?? Date()
                     )
                     .presentationCompactAdaptation(.popover)
                 }
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                HStack(spacing: AppSpacing.xs) {
-                    Button {
-                        showSnippetPicker = true
-                    } label: {
-                        Image(systemName: "text.badge.plus")
-                            .font(.system(size: 14))
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    if !session.isConnected {
+                        Button("Reconnect", systemImage: "arrow.clockwise") { Task { await session.connect() } }
+                            .disabled(isLoading)
                     }
-                    .disabled(!session.isConnected)
-
-                    Button {
-                        pasteFromClipboard()
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 14))
+                    Button("Snippets", systemImage: "text.badge.plus") { showSnippetPicker = true }
+                        .accessibilityIdentifier("session-snippets")
+                        .disabled(!session.isConnected)
+                    Button("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
+                        .disabled(!session.isConnected)
+                    Divider()
+                    Button("Close Session", systemImage: "xmark", role: .destructive) {
+                        sessionManager.requestCloseSession(session.id)
                     }
-                    .disabled(!session.isConnected)
-
-                    Button {
-                        showSFTPBrowser = true
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.system(size: 14))
-                    }
-                    .disabled(!session.isConnected || session.sshClient == nil)
-
-                    Button {
-                        sessionManager.closeSession(session.id)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
+                } label: {
+                    Label("Session Actions", systemImage: "ellipsis.circle")
                 }
+                .accessibilityIdentifier("terminal-actions")
             }
         }
-        .sheet(isPresented: $showSFTPBrowser) {
-            if let client = session.sshClient {
-                SFTPBrowserView(client: client)
-            }
+        .sheet(item: $fileBrowser) { connection in
+            SFTPBrowserView(client: connection.client)
         }
         .sheet(isPresented: $showSnippetPicker) {
             SnippetPickerView { snippet in
@@ -147,9 +139,9 @@ struct TerminalSessionView: View {
     /// pre-flight errors (KeyParseError, AuthResolutionError) whose messages
     /// don't start with "Connection failed", AND the loading states so the
     /// user gets immediate feedback instead of a silent blinking cursor.
-    private var shouldShowErrorOverlay: Bool {
+    private var shouldShowStatusOverlay: Bool {
         if session.isConnected { return false }
-        if session.statusMessage.isEmpty || session.statusMessage == String(localized: "Disconnected") {
+        if session.statusMessage.isEmpty {
             return false
         }
         return true
@@ -162,9 +154,11 @@ struct TerminalSessionView: View {
             && (session.statusMessage == String(localized: "Connecting...") || session.statusMessage == String(localized: "Opening terminal..."))
     }
 
-    // MARK: - Error Banner
+    private var isDisconnected: Bool { session.statusMessage == String(localized: "Disconnected") }
 
-    private var errorBanner: some View {
+    // MARK: - Status Banner
+
+    private var statusBanner: some View {
         VStack(spacing: AppSpacing.md) {
             HStack(alignment: .top, spacing: AppSpacing.sm) {
                 if isLoading {
@@ -172,8 +166,8 @@ struct TerminalSessionView: View {
                         .controlSize(.small)
                         .tint(AppColors.accent)
                 } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppColors.warning)
+                    Image(systemName: isDisconnected ? "network" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(isDisconnected ? AppColors.textSecondary : AppColors.warning)
                         .font(.callout)
                 }
                 Text(session.statusMessage)
@@ -191,7 +185,7 @@ struct TerminalSessionView: View {
                     Button {
                         Task { await session.connect() }
                     } label: {
-                        Text("Retry")
+                        Text(isDisconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
                             .font(AppFonts.label)
                             .foregroundStyle(AppColors.accent)
                             .padding(.horizontal, AppSpacing.xl)
@@ -201,7 +195,7 @@ struct TerminalSessionView: View {
                     }
 
                     Button {
-                        sessionManager.closeSession(session.id)
+                        sessionManager.requestCloseSession(session.id)
                     } label: {
                         Text("Close")
                             .font(AppFonts.label)
@@ -216,11 +210,11 @@ struct TerminalSessionView: View {
         }
         .padding(AppSpacing.lg)
         .background(AppColors.surface.opacity(0.95))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(AppShape.container)
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            AppShape.container
                 .strokeBorder(
-                    (isLoading ? AppColors.accent : AppColors.error).opacity(0.3),
+                    (isLoading ? AppColors.accent : isDisconnected ? AppColors.border : AppColors.error).opacity(0.3),
                     lineWidth: 0.5
                 )
         )
@@ -250,9 +244,9 @@ struct ConnectionInfoPopover: View {
             }
 
             VStack(spacing: AppSpacing.sm) {
-                infoRow("person.fill", "User", session.profile.username)
-                infoRow("server.rack", "Host", session.profile.host)
-                infoRow("number", "Port", "\(session.profile.port)")
+                infoRow("person.fill", "User", session.endpoint.username)
+                infoRow("server.rack", "Host", session.endpoint.host)
+                infoRow("number", "Port", "\(session.endpoint.port)")
                 infoRow(
                     session.isConnected ? "checkmark.circle.fill" : "xmark.circle",
                     "Status",
@@ -260,7 +254,9 @@ struct ConnectionInfoPopover: View {
                     color: session.isConnected ? AppColors.connected : AppColors.error
                 )
                 if session.isConnected {
-                    infoRow("clock", "Uptime", uptimeString)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        infoRow("clock", "Uptime", uptimeString(at: context.date))
+                    }
                 }
                 infoRow(
                     "lock.fill", "Auth",
@@ -269,29 +265,26 @@ struct ConnectionInfoPopover: View {
             }
         }
         .padding(AppSpacing.lg)
-        .frame(minWidth: 260)
+        .frame(idealWidth: 320)
         .background(AppColors.surface)
     }
 
     private func infoRow(_ icon: String, _ label: LocalizedStringKey, _ value: String, color: Color = AppColors.textPrimary) -> some View {
-        HStack(spacing: AppSpacing.sm) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(AppColors.textTertiary)
-                .frame(width: 18)
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(AppColors.textSecondary)
-                .frame(width: 48, alignment: .leading)
+        LabeledContent {
             Text(value)
-                .font(.system(size: 12, design: .monospaced))
+                .font(.callout.monospaced())
                 .foregroundStyle(color)
-                .lineLimit(1)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
+        } label: {
+            Label(label, systemImage: icon)
+                .font(.callout)
+                .foregroundStyle(AppColors.textSecondary)
         }
     }
 
-    private var uptimeString: String {
-        let interval = Date().timeIntervalSince(connectedSince)
+    private func uptimeString(at date: Date) -> String {
+        let interval = max(0, date.timeIntervalSince(connectedSince))
         let hours = Int(interval) / 3600
         let minutes = (Int(interval) % 3600) / 60
         let seconds = Int(interval) % 60

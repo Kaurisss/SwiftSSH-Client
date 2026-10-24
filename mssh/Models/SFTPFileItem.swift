@@ -1,14 +1,46 @@
 import Foundation
 import SwiftUI
 
-struct SFTPFileItem: Identifiable, Sendable {
-    let id = UUID()
+struct SFTPFileItem: Identifiable, Sendable, Equatable {
+    var id: String { path }
     let name: String
     let path: String
     let isDirectory: Bool
     let size: UInt64?
     let modifiedDate: Date?
     let permissions: UInt32?
+
+    static func isValidName(_ name: String) -> Bool {
+        !name.isEmpty && name != "." && name != ".."
+            && !name.contains("/") && !name.contains("\0")
+    }
+
+    enum SortOrder: String, CaseIterable, Identifiable {
+        case name, modified, size
+
+        var id: String { rawValue }
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .name: "Name"
+            case .modified: "Date Modified"
+            case .size: "Size"
+            }
+        }
+
+        func precedes(_ lhs: SFTPFileItem, _ rhs: SFTPFileItem) -> Bool {
+            if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+            switch self {
+            case .modified where (lhs.modifiedDate ?? .distantPast) != (rhs.modifiedDate ?? .distantPast):
+                return (lhs.modifiedDate ?? .distantPast) > (rhs.modifiedDate ?? .distantPast)
+            case .size where (lhs.size ?? 0) != (rhs.size ?? 0):
+                return (lhs.size ?? 0) > (rhs.size ?? 0)
+            default:
+                let comparison = lhs.name.localizedStandardCompare(rhs.name)
+                return comparison == .orderedSame ? lhs.path < rhs.path : comparison == .orderedAscending
+            }
+        }
+    }
 
     var formattedSize: String {
         guard let size else { return "--" }

@@ -22,6 +22,7 @@ private func decscusrEscape(style: AppPreferences.CursorStyle, blink: Bool) -> [
 struct TerminalViewWrapper: UIViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var bridge: SSHTerminalBridge
+    var isFocused = true
     @AppStorage(AppPreferences.Key.terminalThemeName)
     private var themeName = AppPreferences.Default.terminalThemeName
     @AppStorage(AppPreferences.Key.terminalFontFamily)
@@ -50,9 +51,9 @@ struct TerminalViewWrapper: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> TerminalView {
-        let terminal = TerminalView()
+        context.coordinator.wantsFocus = isFocused
+        let terminal = Self.makeTerminalView(backgroundColor: resolvedColor(theme.background))
         terminal.terminalDelegate = context.coordinator
-        terminal.nativeBackgroundColor = resolvedColor(theme.background)
         terminal.nativeForegroundColor = resolvedColor(theme.foreground)
         terminal.font = resolvedFont
         terminal.inputAccessoryView = TerminalAccessoryBar(terminal: terminal)
@@ -60,15 +61,27 @@ struct TerminalViewWrapper: UIViewRepresentable {
 
         applyCursorStyle(to: terminal)
 
-        if bridge.isConnected {
-            Self.focusWithRetry(terminal)
+        if bridge.isConnected && isFocused {
+            Self.focusWithRetry(terminal, coordinator: context.coordinator)
         }
 
         return terminal
     }
 
+    static func makeTerminalView(backgroundColor: UIColor) -> TerminalView {
+        let terminal = TerminalView()
+        terminal.nativeBackgroundColor = backgroundColor
+        terminal.backgroundColor = backgroundColor
+        // Redraw at the new size; keep cached glyphs unscaled during the keyboard animation.
+        terminal.contentMode = .topLeft
+        terminal.layer.needsDisplayOnBoundsChange = true
+        return terminal
+    }
+
     func updateUIView(_ uiView: TerminalView, context: Context) {
+        context.coordinator.wantsFocus = isFocused
         uiView.nativeBackgroundColor = resolvedColor(theme.background)
+        uiView.backgroundColor = uiView.nativeBackgroundColor
         uiView.nativeForegroundColor = resolvedColor(theme.foreground)
 
         let target = resolvedFont
@@ -79,8 +92,8 @@ struct TerminalViewWrapper: UIViewRepresentable {
 
         applyCursorStyle(to: uiView)
 
-        if bridge.isConnected && !uiView.isFirstResponder {
-            Self.focusWithRetry(uiView)
+        if bridge.isConnected && isFocused && !uiView.isFirstResponder {
+            Self.focusWithRetry(uiView, coordinator: context.coordinator)
         }
     }
 
@@ -91,17 +104,17 @@ struct TerminalViewWrapper: UIViewRepresentable {
         terminal.feed(byteArray: ArraySlice(decscusrEscape(style: style, blink: blinkCursor)))
     }
 
-    private static func focusWithRetry(_ view: TerminalView, attempt: Int = 0) {
+    private static func focusWithRetry(_ view: TerminalView, coordinator: Coordinator, attempt: Int = 0) {
         let maxAttempts = 4
         let delays: [TimeInterval] = [0.1, 0.3, 0.6, 1.0]
         let delay = attempt < delays.count ? delays[attempt] : 1.0
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            guard view.window != nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak view, weak coordinator] in
+            guard let view, let coordinator, coordinator.wantsFocus, view.window != nil else { return }
             if !view.isFirstResponder {
                 let success = view.becomeFirstResponder()
                 if !success && attempt + 1 < maxAttempts {
-                    focusWithRetry(view, attempt: attempt + 1)
+                    focusWithRetry(view, coordinator: coordinator, attempt: attempt + 1)
                 }
             }
         }
@@ -113,6 +126,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let bridge: SSHTerminalBridge
+        var wantsFocus = true
 
         init(bridge: SSHTerminalBridge) {
             self.bridge = bridge

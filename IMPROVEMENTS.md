@@ -253,3 +253,5 @@
 - SFTP 空目录和搜索无结果提示是列表中的透明行，系统仍为它绘制分隔线；隐藏该空状态行的分隔线。
 - SSH 配置导入的无主机提示同步处理；其余空状态已隐藏分隔线或位于列表外。
 - 本地配置与界面资源检查各 8 项通过，`git diff --check` 通过；按用户偏好使用仅编译模式，样式由用户检查。
+- 提交 `146c622` 的[仅编译构建](https://github.com/Kaurisss/SwiftSSH-Client/actions/runs/40055284715) 通过，Release 归档、IPA 打包和上传成功；交付 `build/delivery/40055284715/SwiftSSH-unsigned.ipa`。
+- 本地 ZIP CRC、应用标识、签名资源及测试资源排除检查通过；SHA256：`fba0e0a4554881b0964670c5b992a87b9a957daf6167611e86fbf7025af44c4d`。未运行模拟器测试或真机视觉复核，IPA 需自行签名后安装。

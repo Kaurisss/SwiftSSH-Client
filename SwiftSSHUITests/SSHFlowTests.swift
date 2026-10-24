@@ -82,9 +82,10 @@ final class SSHFlowTests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(activeSession.waitForExistence(timeout: 5))
         activeSession.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(details.waitForExistence(timeout: 10))
 
         let files = app.buttons["terminal-files"]
+        XCTAssertTrue(files.waitForExistence(timeout: 10))
         XCTAssertTrue(files.isHittable)
         files.tap()
         XCTAssertTrue(app.navigationBars["Files"].waitForExistence(timeout: 10))

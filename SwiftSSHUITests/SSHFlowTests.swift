@@ -97,7 +97,7 @@ final class SSHFlowTests: XCTestCase {
         XCTAssertFalse(app.navigationBars["Downloaded File"].exists, "Tapping a file must open actions, not download it")
         app.buttons["File Details"].tap()
         XCTAssertTrue(app.navigationBars["File Details"].waitForExistence(timeout: 5))
-        app.buttons["Done"].tap()
+        app.navigationBars["File Details"].buttons["Done"].tap()
         sampleFile.tap()
         app.buttons["Delete"].tap()
         app.alerts.buttons["Delete"].tap()

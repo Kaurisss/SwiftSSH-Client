@@ -251,6 +251,7 @@ struct SFTPBrowserView: View {
                 }
                 .disabled(!viewModel.hasLoadedInitialDirectory)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)

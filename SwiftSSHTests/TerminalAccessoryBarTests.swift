@@ -35,6 +35,18 @@ final class TerminalAccessoryBarTests: XCTestCase {
         XCTAssertTrue(buttons.contains { $0.accessibilityLabel == String(localized: "Snippets") })
     }
 
+    func testControlModifierAppliesToSystemKeyboardInput() throws {
+        let terminal = TerminalView()
+        let delegate = RecordingTerminalDelegate()
+        terminal.terminalDelegate = delegate
+        let bar = TerminalAccessoryBar(terminal: terminal)
+        let control = try XCTUnwrap(buttons(in: bar).first { $0.currentTitle == "Ctrl" })
+        control.sendActions(for: .touchUpInside)
+        terminal.insertText("c")
+        XCTAssertEqual(delegate.sent, [[0x03]])
+        XCTAssertFalse(control.isSelected)
+    }
+
     private func buttons(in view: UIView) -> [UIButton] {
         (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
     }

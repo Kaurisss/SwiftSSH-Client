@@ -42,7 +42,8 @@ final class TerminalAccessoryBar: UIView {
         KeyDef("\u{2192}", [0x1B, 0x5B, 0x43]),  // Right
     ]
 
-    private var ctrlActive = false
+    // Lives on the terminal so SwiftTerm applies it to system-keyboard input too.
+    private var ctrlActive: Bool { terminal?.controlModifier ?? false }
     private var ctrlButton: UIButton?
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
 
@@ -60,6 +61,10 @@ final class TerminalAccessoryBar: UIView {
         setupAppearance()
         setupKeys()
         feedbackGenerator.prepare()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(updateCtrlAppearance),
+            name: .terminalViewControlModifierReset, object: terminal
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -215,7 +220,7 @@ final class TerminalAccessoryBar: UIView {
         let keyDef = keyDefs[index]
 
         if keyDef.isModifier {
-            ctrlActive.toggle()
+            terminal?.controlModifier.toggle()
             updateCtrlAppearance()
             return
         }
@@ -232,11 +237,11 @@ final class TerminalAccessoryBar: UIView {
     }
 
     private func deactivateCtrl() {
-        ctrlActive = false
+        terminal?.controlModifier = false
         updateCtrlAppearance()
     }
 
-    private func updateCtrlAppearance() {
+    @objc private func updateCtrlAppearance() {
         ctrlButton?.isSelected = ctrlActive
         ctrlButton?.backgroundColor = ctrlActive ? accentColor.withAlphaComponent(0.25) : keyColor
         ctrlButton?.tintColor = ctrlActive ? accentColor : keyTextColor

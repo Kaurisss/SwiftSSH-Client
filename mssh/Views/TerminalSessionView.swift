@@ -154,69 +154,14 @@ struct TerminalSessionView: View {
             && (session.statusMessage == String(localized: "Connecting...") || session.statusMessage == String(localized: "Opening terminal..."))
     }
 
-    private var isDisconnected: Bool { session.statusMessage == String(localized: "Disconnected") }
-
     // MARK: - Status Banner
 
     private var statusBanner: some View {
-        VStack(spacing: AppSpacing.md) {
-            HStack(alignment: .top, spacing: AppSpacing.sm) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(AppColors.accent)
-                } else {
-                    Image(systemName: isDisconnected ? "network" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(isDisconnected ? AppColors.textSecondary : AppColors.warning)
-                        .font(.callout)
-                }
-                Text(session.statusMessage)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            // Hide action buttons while we're still trying — they only make
-            // sense once the attempt has settled into a failure state.
-            if !isLoading {
-                HStack(spacing: AppSpacing.sm) {
-                    Button {
-                        Task { await session.connect() }
-                    } label: {
-                        Text(isDisconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
-                            .font(AppFonts.label)
-                            .foregroundStyle(AppColors.accent)
-                            .padding(.horizontal, AppSpacing.xl)
-                            .padding(.vertical, AppSpacing.sm)
-                            .background(AppColors.accentDim)
-                            .clipShape(Capsule())
-                    }
-
-                    Button {
-                        sessionManager.requestCloseSession(session.id)
-                    } label: {
-                        Text("Close")
-                            .font(AppFonts.label)
-                            .foregroundStyle(AppColors.textSecondary)
-                            .padding(.horizontal, AppSpacing.xl)
-                            .padding(.vertical, AppSpacing.sm)
-                            .background(AppColors.surfaceElevated)
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding(AppSpacing.lg)
-        .background(AppColors.surface.opacity(0.95))
-        .clipShape(AppShape.container)
-        .overlay(
-            AppShape.container
-                .strokeBorder(
-                    (isLoading ? AppColors.accent : isDisconnected ? AppColors.border : AppColors.error).opacity(0.3),
-                    lineWidth: 0.5
-                )
+        SessionStatusBanner(
+            message: session.statusMessage,
+            isLoading: isLoading,
+            onReconnect: { Task { await session.connect() } },
+            onClose: { sessionManager.requestCloseSession(session.id) }
         )
     }
 
@@ -227,11 +172,77 @@ struct TerminalSessionView: View {
     }
 }
 
+// MARK: - Session Status Banner
+
+struct SessionStatusBanner: View {
+    let message: String
+    let isLoading: Bool
+    let onReconnect: () -> Void
+    let onClose: () -> Void
+
+    private var isDisconnected: Bool { message == String(localized: "Disconnected") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                Group {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(AppColors.accent)
+                    } else {
+                        Image(systemName: isDisconnected ? "wifi.slash" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(isDisconnected ? AppColors.textSecondary : AppColors.warning)
+                    }
+                }
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+
+                Text(message)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+            }
+
+            if !isLoading {
+                HStack(spacing: AppSpacing.sm) {
+                    Button(action: onReconnect) {
+                        Text(isDisconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .padding(.horizontal, AppSpacing.sm)
+                            .foregroundStyle(AppColors.onEmphasis)
+                            .background(AppColors.accent, in: RoundedRectangle(cornerRadius: AppSpacing.md))
+                    }
+                    Button(action: onClose) {
+                        Text("Close")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .padding(.horizontal, AppSpacing.sm)
+                            .foregroundStyle(AppColors.textPrimary)
+                            .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: AppSpacing.md))
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(AppSpacing.md)
+        .background(AppColors.surface, in: AppShape.container)
+        .overlay(AppShape.container.strokeBorder(AppColors.border, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .frame(maxWidth: 420)
+    }
+}
+
 // MARK: - Connection Info Popover
 
 struct ConnectionInfoPopover: View {
     let session: SessionViewModel
     let connectedSince: Date
+    @ScaledMetric(relativeTo: .callout) private var iconWidth: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.lg) {
@@ -277,9 +288,15 @@ struct ConnectionInfoPopover: View {
                 .textSelection(.enabled)
                 .multilineTextAlignment(.trailing)
         } label: {
-            Label(label, systemImage: icon)
-                .font(.callout)
-                .foregroundStyle(AppColors.textSecondary)
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+                Image(systemName: icon)
+                    .frame(width: iconWidth)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .multilineTextAlignment(.leading)
+            }
+            .font(.callout)
+            .foregroundStyle(AppColors.textSecondary)
         }
     }
 

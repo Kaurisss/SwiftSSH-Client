@@ -141,6 +141,12 @@ final class SSHFlowTests: XCTestCase {
         snippet.tap()
         let reconnect = app.buttons["Reconnect"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+        let close = app.buttons["Close"]
+        XCTAssertTrue(reconnect.isHittable)
+        XCTAssertTrue(close.isHittable)
+        XCTAssertGreaterThanOrEqual(reconnect.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(close.frame.height, 44)
+        XCTAssertFalse(reconnect.frame.intersects(close.frame))
         capture("Live-SSH-Disconnected-Recovery")
         reconnect.tap()
         waitForConnected(details)

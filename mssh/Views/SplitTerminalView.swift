@@ -146,67 +146,12 @@ struct SplitSessionTabView: View {
         TerminalSessionView(session: session)
     }
 
-    /// Inline banner shared by single and split panes — loading style
-    /// (spinner, no buttons) while the SSH attempt is in flight, error style
-    /// (warning + Retry / Close) once it has settled into a failure.
     private func sessionStatusBanner(session: SessionViewModel) -> some View {
-        let loading = SessionBannerInfo.isLoading(for: session)
-        let disconnected = session.statusMessage == String(localized: "Disconnected")
-        return VStack(spacing: AppSpacing.md) {
-            HStack(alignment: .top, spacing: AppSpacing.sm) {
-                if loading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(AppColors.accent)
-                } else {
-                    Image(systemName: disconnected ? "network" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(disconnected ? AppColors.textSecondary : AppColors.warning)
-                        .font(.callout)
-                }
-                Text(session.statusMessage)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if !loading {
-                HStack(spacing: AppSpacing.sm) {
-                    Button {
-                        Task { await session.connect() }
-                    } label: {
-                        Text(disconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
-                            .font(AppFonts.label)
-                            .foregroundStyle(AppColors.accent)
-                            .padding(.horizontal, AppSpacing.xl)
-                            .padding(.vertical, AppSpacing.sm)
-                            .background(AppColors.accentDim)
-                            .clipShape(Capsule())
-                    }
-                    Button {
-                        sessionManager.closeSession(session.id)
-                    } label: {
-                        Text("Close")
-                            .font(AppFonts.label)
-                            .foregroundStyle(AppColors.textSecondary)
-                            .padding(.horizontal, AppSpacing.xl)
-                            .padding(.vertical, AppSpacing.sm)
-                            .background(AppColors.surfaceElevated)
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-        }
-        .padding(AppSpacing.lg)
-        .background(AppColors.surface.opacity(0.95))
-        .clipShape(AppShape.container)
-        .overlay(
-            AppShape.container
-                .strokeBorder(
-                    (loading ? AppColors.accent : disconnected ? AppColors.border : AppColors.error).opacity(0.3),
-                    lineWidth: 0.5
-                )
+        SessionStatusBanner(
+            message: session.statusMessage,
+            isLoading: SessionBannerInfo.isLoading(for: session),
+            onReconnect: { Task { await session.connect() } },
+            onClose: { sessionManager.closeSession(session.id) }
         )
     }
 

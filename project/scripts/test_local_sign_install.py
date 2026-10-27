@@ -140,7 +140,7 @@ class SigningTests(unittest.TestCase):
             path = Path(directory) / "mine.ipa"
             path.write_bytes(b"fixture")
             with patch.object(module, "OUTPUT", Path(directory) / "out"), patch.object(module, "download_ipa") as download:
-                self.assertEqual(module.resolve_ipa({}, str(path)), path)
+                self.assertEqual(module.resolve_ipa({}, str(path)), path.resolve())
                 download.assert_not_called()
                 with self.assertRaisesRegex(ValueError, "找不到 IPA"):
                     module.resolve_ipa({}, str(Path(directory) / "missing.ipa"))

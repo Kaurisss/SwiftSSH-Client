@@ -1,4 +1,4 @@
-"""Download this app's Actions IPA, sign with local credentials, and install over USB."""
+"""Download (or use a local) IPA, sign with local credentials, and install over USB."""
 import argparse
 import asyncio
 import csv
@@ -50,6 +50,18 @@ def download_ipa(config):
         destination = OUTPUT / f"SwiftSSH-{run['databaseId']}-unsigned.ipa"
         os.replace(ipas[0], destination)
     return destination
+
+
+def resolve_ipa(config, ipa_path):
+    if ipa_path is None:
+        print("[1/3] 下载最新 Actions unsigned IPA…", flush=True)
+        return download_ipa(config)
+    path = Path(ipa_path).resolve()
+    if not path.is_file():
+        raise ValueError(f"找不到 IPA 文件：{path}")
+    OUTPUT.mkdir(exist_ok=True)
+    print(f"[1/3] 使用本地 IPA：{path}", flush=True)
+    return path
 
 
 def validate_profile(profile, certificate_der, device, now):
@@ -143,7 +155,7 @@ def restrict_directory(path):
     )
 
 
-async def main(check_only=False):
+async def main(check_only=False, ipa_path=None):
     from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
     from pymobiledevice3.lockdown import create_using_usbmux
     from pymobiledevice3.services.installation_proxy import InstallationProxyService
@@ -155,8 +167,7 @@ async def main(check_only=False):
     config = json.loads(config_file.read_text(encoding="utf-8-sig"))
     if not all(config.get(field) for field in ("ghPath", "repository", "opensslPath")):
         raise ValueError("本地配置仍是 xtool 版本，请重新运行 初始化.cmd。")
-    print("[1/3] 下载最新 Actions unsigned IPA…", flush=True)
-    ipa = download_ipa(config)
+    ipa = resolve_ipa(config, ipa_path)
     info, _ = ipa_info(ipa)
     key, cert, profile_blob, profile = credentials(config)
     connected = [d.serial for d in await list_devices() if d.connection_type == "USB"]
@@ -223,9 +234,10 @@ async def main(check_only=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Download IPA and validate credentials and USB; do not sign or install")
+    parser.add_argument("ipa", nargs="?", help="Sign and install this local IPA instead of downloading the latest Actions build")
     args = parser.parse_args()
     try:
-        asyncio.run(main(args.check))
+        asyncio.run(main(args.check, args.ipa))
     except KeyboardInterrupt:
         print("\n已取消。", flush=True)
         raise SystemExit(1)

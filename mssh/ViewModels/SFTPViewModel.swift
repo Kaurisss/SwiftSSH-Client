@@ -13,6 +13,7 @@ final class SFTPViewModel {
     private(set) var directoryError: String?
     private(set) var hasLoadedInitialDirectory = false
     var error: String?
+    var documentService: any SFTPDocumentServicing { sftpService }
     var searchText = ""
     var showsHiddenFiles = false
     var sortOrder = SFTPFileItem.SortOrder.name

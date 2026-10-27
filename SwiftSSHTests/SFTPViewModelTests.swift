@@ -304,6 +304,12 @@ private actor TestSFTPService: SFTPServicing {
         }
     }
 
+    func readDocument(path: String, maximumBytes: Int) async throws -> SFTPDocumentSnapshot {
+        throw CocoaError(.fileReadNoSuchFile)
+    }
+    func saveDocument(path: String, data: Data, replacing original: SFTPDocumentSnapshot) async throws -> SFTPDocumentSnapshot {
+        throw CocoaError(.fileWriteNoPermission)
+    }
     func getHomePath() async throws -> String { "/home" }
     func listDirectory(path: String) async throws -> [SFTPFileItem] {
         if let started = listingStarted {

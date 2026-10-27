@@ -19,8 +19,14 @@ packages:
     url: https://github.com/migueldeicaza/SwiftTerm
     exactVersion: "1.13.0"
   Citadel:
-    url: https://github.com/orlandos-nl/Citadel
-    exactVersion: "0.12.1"
+    path: Vendor/Citadel
+
+  Runestone:
+    url: https://github.com/simonbs/Runestone
+    exactVersion: "0.5.2"
+  TreeSitterLanguages:
+    url: https://github.com/simonbs/TreeSitterLanguages
+    exactVersion: "0.1.10"
 
 targets:
   SwiftSSH:
@@ -56,6 +62,14 @@ targets:
     dependencies:
       - package: SwiftTerm
       - package: Citadel
+      - package: Runestone
+        product: Runestone
+      - package: TreeSitterLanguages
+        product: TreeSitterBashRunestone
+      - package: TreeSitterLanguages
+        product: TreeSitterJSONRunestone
+      - package: TreeSitterLanguages
+        product: TreeSitterYAMLRunestone
     info:
       path: mssh/Info.plist
       properties:

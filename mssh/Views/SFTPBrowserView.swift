@@ -8,6 +8,8 @@ struct SFTPBrowserView: View {
     }
     @State private var viewModel: SFTPViewModel
     @State private var inspectedFile: SFTPFileItem?
+    @State private var openedFile: SFTPFileItem?
+    @State private var pendingDownload: SFTPFileItem?
     @Environment(\.dismiss) private var dismiss
 
     init(client: SSHClient) {
@@ -125,6 +127,19 @@ struct SFTPBrowserView: View {
                 }
             }
             .sheet(item: $inspectedFile) { item in SFTPFileInfoView(item: item) }
+            .sheet(item: $openedFile, onDismiss: {
+                let download = pendingDownload
+                pendingDownload = nil
+                Task {
+                    if let download { await viewModel.download(item: download) }
+                    else { await viewModel.refresh() }
+                }
+            }) { item in
+                SFTPDocumentView(item: item, service: viewModel.documentService) {
+                    pendingDownload = item
+                    openedFile = nil
+                }
+            }
         }
         .interactiveDismissDisabled(viewModel.isBusy)
         .onDisappear { viewModel.cancelTransfer() }
@@ -269,13 +284,13 @@ struct SFTPBrowserView: View {
             }
             .accessibilityHint("Open Folder")
         } else {
-            Menu {
-                fileActions(item)
+            Button {
+                openedFile = item
             } label: {
                 fileLabel(item)
             }
             .accessibilityIdentifier("sftp-file-\(item.name)")
-            .accessibilityHint("File Actions")
+            .accessibilityHint("Open File")
         }
     }
 
@@ -302,7 +317,7 @@ struct SFTPBrowserView: View {
                 }
             }
             Spacer(minLength: AppSpacing.sm)
-            Image(systemName: item.isDirectory ? "chevron.forward" : "ellipsis")
+            Image(systemName: "chevron.forward")
                 .foregroundStyle(AppColors.textSecondary)
                 .accessibilityHidden(true)
         }

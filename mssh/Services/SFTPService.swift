@@ -2,7 +2,7 @@ import Foundation
 import Citadel
 import NIO
 
-protocol SFTPServicing: Sendable {
+protocol SFTPServicing: SFTPDocumentServicing {
     func listDirectory(path: String) async throws -> [SFTPFileItem]
     func getHomePath() async throws -> String
     func downloadFile(remotePath: String, localURL: URL) async throws
@@ -13,7 +13,7 @@ protocol SFTPServicing: Sendable {
 }
 
 final class SFTPService: SFTPServicing {
-    private let client: SSHClient
+    let client: SSHClient
 
     init(client: SSHClient) {
         self.client = client

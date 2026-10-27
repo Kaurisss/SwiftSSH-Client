@@ -180,60 +180,73 @@ struct SessionStatusBanner: View {
     let onReconnect: () -> Void
     let onClose: () -> Void
 
-    private var isDisconnected: Bool { message == String(localized: "Disconnected") }
+    private var isPlainDisconnect: Bool { message == String(localized: "Disconnected") }
+
+    /// "Connection lost: <system error>" reads as a short headline plus copyable detail.
+    private var parts: (title: String, detail: String?) {
+        guard let colon = message.firstIndex(where: { $0 == ":" || $0 == "：" }) else { return (message, nil) }
+        let title = message[..<colon].trimmingCharacters(in: .whitespaces)
+        let detail = message[message.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        return title.isEmpty ? (message, nil) : (title, detail.isEmpty ? nil : detail)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            HStack(alignment: .top, spacing: AppSpacing.sm) {
-                Group {
+        HStack(spacing: AppSpacing.sm) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: AppSpacing.sm) {
                     if isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(AppColors.accent)
+                        ProgressView().controlSize(.mini)
                     } else {
-                        Image(systemName: isDisconnected ? "wifi.slash" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(isDisconnected ? AppColors.textSecondary : AppColors.warning)
+                        Circle()
+                            .fill(isPlainDisconnect ? AppColors.textSecondary : AppColors.error)
+                            .frame(width: 8, height: 8)
                     }
+                    Text(parts.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(3)
                 }
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
-
-                Text(message)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(AppColors.textPrimary)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(8)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                if let detail = parts.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .padding(.leading, 16)
+                }
             }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
 
             if !isLoading {
-                HStack(spacing: AppSpacing.sm) {
-                    Button(action: onReconnect) {
-                        Text(isDisconnected ? String(localized: "Reconnect") : String(localized: "Retry"))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .padding(.horizontal, AppSpacing.sm)
-                            .foregroundStyle(AppColors.onEmphasis)
-                            .background(AppColors.accent, in: RoundedRectangle(cornerRadius: AppSpacing.md))
-                    }
-                    Button(action: onClose) {
-                        Text("Close")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .padding(.horizontal, AppSpacing.sm)
-                            .foregroundStyle(AppColors.textPrimary)
-                            .background(AppColors.surfaceElevated, in: RoundedRectangle(cornerRadius: AppSpacing.md))
-                    }
+                Button(action: onReconnect) {
+                    Text("Reconnect")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppColors.onEmphasis)
+                        .padding(.horizontal, AppSpacing.lg)
+                        .frame(minHeight: 34)
+                        .background(AppColors.accent, in: Capsule())
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .font(.subheadline.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .buttonStyle(.plain)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppColors.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(Text("Close"))
             }
         }
-        .padding(AppSpacing.md)
-        .background(AppColors.surface, in: AppShape.container)
+        .buttonStyle(.plain)
+        .padding(.leading, AppSpacing.lg)
+        .padding(.trailing, AppSpacing.xs)
+        .padding(.vertical, AppSpacing.xs)
+        .background(.regularMaterial, in: AppShape.container)
         .overlay(AppShape.container.strokeBorder(AppColors.border, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-        .frame(maxWidth: 420)
+        .shadow(color: .black.opacity(0.08), radius: 16, y: 6)
+        .frame(maxWidth: 480)
     }
 }
 

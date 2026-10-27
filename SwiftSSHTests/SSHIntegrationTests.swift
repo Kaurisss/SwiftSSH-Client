@@ -74,6 +74,92 @@ final class SSHIntegrationTests: XCTestCase {
         }
     }
 
+    func testSFTPDocumentSavePreservesModeAndDetectsConflicts() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let service = SSHService()
+        let client = try await service.connect(host: "127.0.0.1", port: fixture.port,
+            username: fixture.username, authMethod: .privateKey(Data(fixture.privateKey.utf8)),
+            modelContainer: container, hostKeyPrompt: { _ in .accept })
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        let local = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: local) }
+        let sftp = SFTPService(client: client)
+        let directory = fixture.directory + "/" + UUID().uuidString
+        let remote = directory + "/空 格.txt"
+        do {
+            try await sftp.createDirectory(path: directory)
+            let source = local.appendingPathComponent("source.txt")
+            let originalData = Data("你好，SwiftSSH！\nOriginal text with a trailing line to remove.\n".utf8)
+            try originalData.write(to: source)
+            try await sftp.uploadFile(localURL: source, remotePath: remote)
+            try await client.withSFTP { connection in
+                var attributes = SFTPFileAttributes()
+                attributes.permissions = 0o640
+                try await connection.setAttributes(at: remote, to: attributes)
+            }
+            let original = try await sftp.readDocument(path: remote, maximumBytes: SFTPTextDocument.maximumBytes)
+            XCTAssertEqual(original.data, originalData)
+            XCTAssertEqual(original.permissions.map { $0 & 0o7777 }, 0o640)
+            XCTAssertNotNil(original.userID)
+            XCTAssertNotNil(original.groupID)
+
+            let replacement = Data("短文\n".utf8)
+            XCTAssertLessThan(replacement.count, originalData.count)
+            let saved = try await sftp.saveDocument(path: remote, data: replacement, replacing: original)
+            let reread = try await sftp.readDocument(path: remote, maximumBytes: SFTPTextDocument.maximumBytes)
+            XCTAssertEqual(saved, reread)
+            XCTAssertEqual(reread.data, replacement, "Shorter saves must not leave trailing bytes")
+            XCTAssertEqual(reread.canonicalPath, original.canonicalPath)
+            XCTAssertEqual(reread.permissions, original.permissions)
+            XCTAssertEqual(reread.permissions.map { $0 & 0o7777 }, 0o640)
+            XCTAssertEqual(reread.userID, original.userID)
+            XCTAssertEqual(reread.groupID, original.groupID)
+
+            do {
+                _ = try await sftp.saveDocument(path: remote, data: Data("stale edit".utf8), replacing: original)
+                XCTFail("Saving a stale snapshot must report a conflict")
+            } catch SFTPDocumentError.conflict {}
+            let afterConflict = try await sftp.readDocument(path: remote, maximumBytes: SFTPTextDocument.maximumBytes)
+            XCTAssertEqual(afterConflict, reread, "A conflict must preserve the saved file")
+
+            do {
+                _ = try await sftp.readDocument(path: remote, maximumBytes: replacement.count - 1)
+                XCTFail("Reading beyond the requested byte limit must fail")
+            } catch SFTPDocumentError.tooLarge {}
+
+            let cancelledSave = Task {
+                withUnsafeCurrentTask { $0?.cancel() }
+                return try await sftp.saveDocument(path: remote, data: Data("cancelled edit".utf8), replacing: reread)
+            }
+            do {
+                _ = try await cancelledSave.value
+                XCTFail("An already-cancelled save must stop")
+            } catch is CancellationError {}
+            let afterCancellation = try await sftp.readDocument(path: remote, maximumBytes: SFTPTextDocument.maximumBytes)
+            XCTAssertEqual(afterCancellation, reread, "Cancellation must preserve the saved file")
+            let remaining = try await sftp.listDirectory(path: directory)
+            XCTAssertFalse(remaining.contains { $0.name.hasPrefix(".SwiftSSH-edit-") },
+                           "Saves must not leave staging files behind")
+            let output = try await client.executeCommand("printf 'still-connected'")
+            XCTAssertEqual(String(decoding: output.readableBytesView, as: UTF8.self), "still-connected")
+            try await sftp.deleteFile(path: remote)
+            try await sftp.deleteDirectory(path: directory)
+            await service.disconnect()
+        } catch {
+            try? await sftp.deleteFile(path: remote)
+            if let remaining = try? await sftp.listDirectory(path: directory) {
+                for item in remaining where item.name.hasPrefix(".SwiftSSH-edit-") {
+                    try? await sftp.deleteFile(path: item.path)
+                }
+            }
+            try? await sftp.deleteDirectory(path: directory)
+            await service.disconnect()
+            throw error
+        }
+    }
+
     func testCancellingSFTPTransfersCleansPartialFilesAndKeepsSSHConnected() async throws {
         let fixture = try loadFixture()
         let container = try makeContainer()

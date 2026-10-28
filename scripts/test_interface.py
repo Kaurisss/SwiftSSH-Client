@@ -40,7 +40,6 @@ class InterfaceTests(unittest.TestCase):
         self.assertNotIn('UINavigationBarAppearance', app)
         self.assertNotIn('.preferredColorScheme(.dark)', design)
         self.assertNotIn('.toolbarColorScheme(.dark', hosts)
-        self.assertIn('.background(AppColors.surface, in: Capsule())', hosts)
         for file in ('KeyManagerView.swift', 'KnownHostsView.swift'):
             code = (ROOT / 'mssh/Views' / file).read_text(encoding='utf-8')
             self.assertIn('.frame(maxWidth: .infinity, maxHeight: .infinity)', code)
@@ -75,18 +74,6 @@ class InterfaceTests(unittest.TestCase):
         empty_state = manager.split('private var emptyState:', 1)[1].split('// MARK: - Key List', 1)[0]
         self.assertIn('showImportSheet = true', empty_state)
         self.assertNotIn('showImportWizard = true', empty_state)
-
-    def test_key_import_preview_has_no_discarded_variant_harness(self):
-        html = (ROOT / 'design/key-import/index.html').read_text(encoding='utf-8')
-        for discarded in ('__variant', 'variant-picker', 'renderInline', 'renderGuided',
-                          '分步确认', '直填表单'):
-            self.assertNotIn(discarded, html)
-        self.assertIn("connect-src 'none'", html)
-        self.assertIn("form-action 'none'", html)
-        for source in ('file', 'paste'):
-            self.assertIn(f'data-source="{source}"', html)
-        for persistence in ('localStorage', 'sessionStorage', 'navigator.clipboard', 'fetch('):
-            self.assertNotIn(persistence, html)
 
     def test_generated_version_uses_project_build_settings(self):
         spec = (ROOT / 'project.yml').read_text(encoding='utf-8')

@@ -1,203 +1,279 @@
 import Foundation
 import Citadel
 import Observation
-import UniformTypeIdentifiers
 
 @Observable
 @MainActor
 final class SFTPViewModel {
-    var currentPath: String = "/"
-    var files: [SFTPFileItem] = []
-    var isLoading = false
+    private(set) var currentPath = "/"
+    private(set) var files: [SFTPFileItem] = []
+    private(set) var isLoading = false
+    private(set) var isMutating = false
+    private(set) var pathHistory: [String] = []
+    private(set) var directoryError: String?
+    private(set) var hasLoadedInitialDirectory = false
     var error: String?
-    var pathHistory: [String] = []
+    var documentService: any SFTPDocumentServicing { sftpService }
+    var searchText = ""
+    var showsHiddenFiles = false
+    var sortOrder = SFTPFileItem.SortOrder.name
 
-    // Transfer state
-    var isTransferring = false
-    var transferFileName: String = ""
-    var transferProgress: Double = 0
-    var transferType: TransferType = .download
-
-    // New folder state
+    private(set) var isTransferring = false
+    private(set) var isCancellingTransfer = false
+    private(set) var transferFileName = ""
+    private(set) var transferType: TransferType = .download
+    var downloadedFile: DownloadedFile?
     var showNewFolderAlert = false
     var newFolderName = ""
-
-    // File importer
     var showFileImporter = false
-
-    // Confirmation dialog
     var itemToDelete: SFTPFileItem?
     var showDeleteConfirmation = false
 
     enum TransferType {
-        case download
-        case upload
+        case download, upload
     }
 
-    private let sftpService: SFTPService
+    struct DownloadedFile: Identifiable {
+        let url: URL
+        var id: URL { url }
+    }
+
+    private let sftpService: any SFTPServicing
+    private enum HistoryChange { case append, back, unchanged }
+    private var failedNavigation: (path: String, history: HistoryChange)?
+    private var downloadDirectory: URL?
+    private var transferTask: Task<Void, Error>?
+
+    var isBusy: Bool { isLoading || isTransferring || isMutating }
+
+    var visibleFiles: [SFTPFileItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return files.filter {
+            (showsHiddenFiles || !$0.name.hasPrefix("."))
+                && (query.isEmpty || $0.name.localizedStandardContains(query))
+        }.sorted(by: sortOrder.precedes)
+    }
 
     var breadcrumbs: [PathCrumb] {
-        var crumbs: [PathCrumb] = []
-        let components = currentPath.split(separator: "/")
-        crumbs.append(PathCrumb(name: "/", path: "/"))
-        var built = ""
-        for component in components {
-            built += "/" + component
-            crumbs.append(PathCrumb(name: String(component), path: built))
+        var crumbs = [PathCrumb(name: "/", path: "/")]
+        var path = ""
+        for component in currentPath.split(separator: "/") {
+            path += "/" + component
+            crumbs.append(PathCrumb(name: String(component), path: path))
         }
         return crumbs
     }
 
-    init(client: SSHClient) {
-        self.sftpService = SFTPService(client: client)
+    convenience init(client: SSHClient) {
+        self.init(service: SFTPService(client: client))
+    }
+
+    init(service: any SFTPServicing) {
+        sftpService = service
     }
 
     func loadInitialDirectory() async {
+        guard !isBusy, !hasLoadedInitialDirectory else { return }
         isLoading = true
-        error = nil
+        directoryError = nil
+        defer { isLoading = false }
         do {
             let home = try await sftpService.getHomePath()
+            let entries = try await sftpService.listDirectory(path: home)
             currentPath = home
-            pathHistory = [home]
-            try await loadFiles()
+            files = entries
+            hasLoadedInitialDirectory = true
         } catch {
-            self.error = String(localized: "Failed to resolve home: \(error.localizedDescription)")
+            directoryError = String(localized: "Failed to open home folder: \(error.localizedDescription)")
         }
-        isLoading = false
     }
 
     func navigate(to path: String) async {
-        pathHistory.append(currentPath)
-        currentPath = path
-        await refresh()
+        guard path != currentPath else { return }
+        await loadDirectory(at: path, history: .append)
     }
 
     func goUp() async {
+        guard currentPath != "/" else { return }
         let parent = (currentPath as NSString).deletingLastPathComponent
-        let target = parent.isEmpty ? "/" : parent
-        pathHistory.append(currentPath)
-        currentPath = target
-        await refresh()
+        await navigate(to: parent.isEmpty ? "/" : parent)
     }
 
     func goBack() async {
-        guard let previous = pathHistory.popLast() else { return }
-        currentPath = previous
-        await refresh()
-    }
-
-    func navigateToBreadcrumb(_ path: String) async {
-        if path != currentPath {
-            pathHistory.append(currentPath)
-            currentPath = path
-            await refresh()
-        }
+        guard let previous = pathHistory.last else { return }
+        await loadDirectory(at: previous, history: .back)
     }
 
     func refresh() async {
-        isLoading = true
-        error = nil
-        do {
-            try await loadFiles()
-        } catch {
-            self.error = String(localized: "Failed to list directory: \(error.localizedDescription)")
+        if hasLoadedInitialDirectory {
+            await loadDirectory(at: currentPath, history: .unchanged)
+        } else {
+            await loadInitialDirectory()
         }
-        isLoading = false
+    }
+
+    func retryDirectory() async {
+        if let failedNavigation {
+            await loadDirectory(at: failedNavigation.path, history: failedNavigation.history)
+        } else {
+            await refresh()
+        }
     }
 
     func download(item: SFTPFileItem) async {
+        guard !isBusy, !item.isDirectory, SFTPFileItem.isValidName(item.name) else { return }
+        discardDownload()
         isTransferring = true
         transferFileName = item.name
         transferType = .download
-        transferProgress = 0
-
+        defer { finishTransfer() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         do {
-            let documentsURL = FileManager.default.urls(
-                for: .documentDirectory,
-                in: .userDomainMask
-            ).first!
-            let localURL = documentsURL.appendingPathComponent(item.name)
-
-            try await sftpService.downloadFile(remotePath: item.path, localURL: localURL)
-            transferProgress = 1.0
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(item.name)
+            let task = Task {
+                try Task.checkCancellation()
+                try await sftpService.downloadFile(remotePath: item.path, localURL: url)
+                try Task.checkCancellation()
+            }
+            transferTask = task
+            try await task.value
+            if task.isCancelled { throw CancellationError() }
+            downloadDirectory = directory
+            downloadedFile = DownloadedFile(url: url)
         } catch {
-            self.error = String(localized: "Download failed: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: directory)
+            if transferTask?.isCancelled != true {
+                self.error = String(localized: "Download failed: \(error.localizedDescription)")
+            }
         }
+    }
 
-        // Brief delay so user sees completion
-        try? await Task.sleep(for: .milliseconds(500))
-        isTransferring = false
+    func discardDownload() {
+        if let downloadDirectory {
+            try? FileManager.default.removeItem(at: downloadDirectory)
+        }
+        downloadDirectory = nil
+        downloadedFile = nil
     }
 
     func upload(url: URL) async {
-        let filename = url.lastPathComponent
+        guard !isBusy, hasLoadedInitialDirectory else { return }
+        let name = url.lastPathComponent
+        guard validateNewName(name) else { return }
         isTransferring = true
-        transferFileName = filename
+        transferFileName = name
         transferType = .upload
-        transferProgress = 0
-
         do {
-            let remotePath: String
-            if currentPath.hasSuffix("/") {
-                remotePath = currentPath + filename
-            } else {
-                remotePath = currentPath + "/" + filename
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            let path = childPath(name)
+            let task = Task {
+                try Task.checkCancellation()
+                try await sftpService.uploadFile(localURL: url, remotePath: path)
+                try Task.checkCancellation()
             }
-
-            _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-
-            try await sftpService.uploadFile(localURL: url, remotePath: remotePath)
-            transferProgress = 1.0
-            try? await Task.sleep(for: .milliseconds(500))
-            isTransferring = false
-            await refresh()
+            transferTask = task
+            try await task.value
         } catch {
-            self.error = String(localized: "Upload failed: \(error.localizedDescription)")
-            isTransferring = false
+            if case SFTPTransferError.uploadCleanupFailed = error {
+                self.error = error.localizedDescription
+            } else if transferTask?.isCancelled != true {
+                self.error = String(localized: "Upload failed. Existing files are kept; choose a different name and try again. \(error.localizedDescription)")
+            }
         }
+        finishTransfer()
+        await refresh()
+    }
+
+    func cancelTransfer() {
+        guard let transferTask, !isCancellingTransfer else { return }
+        isCancellingTransfer = true
+        transferTask.cancel()
+    }
+
+    private func finishTransfer() {
+        transferTask = nil
+        isTransferring = false
+        isCancellingTransfer = false
     }
 
     func delete(item: SFTPFileItem) async {
+        guard !isBusy, files.contains(where: { $0.path == item.path }) else { return }
+        isMutating = true
+        defer { itemToDelete = nil }
         do {
             if item.isDirectory {
                 try await sftpService.deleteDirectory(path: item.path)
             } else {
                 try await sftpService.deleteFile(path: item.path)
             }
-            await refresh()
         } catch {
             self.error = String(localized: "Delete failed: \(error.localizedDescription)")
         }
+        isMutating = false
+        await refresh()
     }
 
     func createDirectory() async {
+        guard !isBusy, hasLoadedInitialDirectory else { return }
         let name = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
+        guard validateNewName(name) else { return }
+        isMutating = true
         do {
-            let path: String
-            if currentPath.hasSuffix("/") {
-                path = currentPath + name
-            } else {
-                path = currentPath + "/" + name
-            }
-            try await sftpService.createDirectory(path: path)
+            try await sftpService.createDirectory(path: childPath(name))
             newFolderName = ""
-            await refresh()
         } catch {
             self.error = String(localized: "Create folder failed: \(error.localizedDescription)")
         }
+        isMutating = false
+        await refresh()
     }
 
-    // MARK: - Private
+    private func validateNewName(_ name: String) -> Bool {
+        guard SFTPFileItem.isValidName(name) else {
+            error = String(localized: "Enter a name other than . or .., without / or null characters.")
+            return false
+        }
+        guard !files.contains(where: { $0.name == name }) else {
+            error = String(localized: "An item with this name already exists. Choose a different name.")
+            return false
+        }
+        return true
+    }
 
-    private func loadFiles() async throws {
-        files = try await sftpService.listDirectory(path: currentPath)
+    private func childPath(_ name: String) -> String {
+        currentPath.hasSuffix("/") ? currentPath + name : currentPath + "/" + name
+    }
+
+    @discardableResult
+    private func loadDirectory(at path: String, history: HistoryChange) async -> Bool {
+        guard !isBusy else { return false }
+        isLoading = true
+        directoryError = nil
+        defer { isLoading = false }
+        do {
+            let entries = try await sftpService.listDirectory(path: path)
+            switch history {
+            case .append: pathHistory.append(currentPath)
+            case .back: pathHistory.removeLast()
+            case .unchanged: break
+            }
+            if path != currentPath { searchText = "" }
+            currentPath = path
+            files = entries
+            failedNavigation = nil
+            return true
+        } catch {
+            directoryError = String(localized: "Failed to list directory: \(error.localizedDescription)")
+            failedNavigation = (path, history)
+            return false
+        }
     }
 }
 
 struct PathCrumb: Identifiable {
-    let id = UUID()
+    var id: String { path }
     let name: String
     let path: String
 }

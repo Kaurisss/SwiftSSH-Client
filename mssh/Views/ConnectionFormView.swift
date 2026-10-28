@@ -20,6 +20,7 @@ struct ConnectionFormView: View {
     @State private var portValidationError: String?
     @State private var isTestingConnection = false
     @State private var testResult: ConnectionTestResult?
+    @State private var saveError: String?
 
     // Organization fields (US-002)
     @State private var isFavorite: Bool = false
@@ -34,15 +35,25 @@ struct ConnectionFormView: View {
 
     init(existingProfile: ConnectionProfile? = nil) {
         self.existingProfile = existingProfile
+        _label = State(initialValue: existingProfile?.label ?? "")
+        _host = State(initialValue: existingProfile?.host ?? "")
+        _port = State(initialValue: String(existingProfile?.port ?? 22))
+        _username = State(initialValue: existingProfile?.username ?? "root")
+        _authType = State(initialValue: existingProfile?.authType ?? .password)
+        _selectedKeyID = State(initialValue: existingProfile?.keyID)
+        _isFavorite = State(initialValue: existingProfile?.isFavorite ?? false)
+        _groupName = State(initialValue: existingProfile?.groupName ?? "")
+        _colorTag = State(initialValue: existingProfile?.colorTag)
     }
 
     private var parsedPort: Int? {
-        guard let p = Int(port), p >= 1, p <= 65535 else { return nil }
+        guard let p = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)), p >= 1, p <= 65535 else { return nil }
         return p
     }
 
     private var isFormValid: Bool {
-        !host.isEmpty && !username.isEmpty && parsedPort != nil
+        !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && parsedPort != nil
     }
 
     var body: some View {
@@ -56,7 +67,7 @@ struct ConnectionFormView: View {
                     #else
                     formField("Host", text: $host, placeholder: "192.168.1.1 or host.com", autocap: false)
                     #endif
-                    HStack {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         #if os(iOS)
                         formField("Port", text: $port, placeholder: "22", keyboard: UIKeyboardType.numberPad)
                             .onChange(of: port) { validatePort() }
@@ -84,10 +95,13 @@ struct ConnectionFormView: View {
                             .tag(AuthenticationType.key)
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("connection-auth-method")
 
                     if authType == .password {
                         SecureField("Password", text: $password)
                             .font(.system(.body, design: .monospaced))
+                            .textContentType(.password)
+                            .accessibilityIdentifier("connection-password")
                     } else {
                         Picker("Key", selection: $selectedKeyID) {
                             Text("Select a key...").tag(String?.none)
@@ -103,6 +117,7 @@ struct ConnectionFormView: View {
                                 .tag(Optional(key.syncID))
                             }
                         }
+                        .accessibilityIdentifier("connection-key")
 
                         if keys.isEmpty {
                             NavigationLink {
@@ -144,7 +159,8 @@ struct ConnectionFormView: View {
                                     Button("Clear", role: .destructive) { groupName = "" }
                                 }
                             } label: {
-                                Image(systemName: "chevron.down.circle")
+                                Label("Choose Group", systemImage: "chevron.down.circle")
+                                    .labelStyle(.iconOnly)
                                     .foregroundStyle(AppColors.textSecondary)
                             }
                         }
@@ -155,7 +171,7 @@ struct ConnectionFormView: View {
                             .foregroundStyle(AppColors.accent)
                         Text("Color Tag")
                         Spacer()
-                        ScrollView(.horizontal, showsIndicators: false) {
+                        ScrollView(.horizontal) {
                             HStack(spacing: 8) {
                                 tagSwatch(name: nil, isSelected: colorTag == nil)
                                 ForEach(ConnectionProfile.tagPalette, id: \.self) { name in
@@ -201,29 +217,7 @@ struct ConnectionFormView: View {
                     }
                 }
 
-                // Preview
-                if !host.isEmpty && !username.isEmpty {
-                    Section("Preview") {
-                        let effectiveLabel = label.isEmpty ? "\(username)@\(host)" : label
-                        HStack(spacing: AppSpacing.md) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(AppColors.accentDim)
-                                    .frame(width: 36, height: 36)
-                                Image(systemName: "server.rack")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(AppColors.accent)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(effectiveLabel)
-                                    .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                                Text("\(username)@\(host):\(port)")
-                                    .font(AppFonts.monoCaption)
-                                    .foregroundStyle(AppColors.textSecondary)
-                            }
-                        }
-                    }
-                }
+
             }
             .scrollContentBackground(.hidden)
             .background(AppColors.background)
@@ -236,37 +230,21 @@ struct ConnectionFormView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         save()
-                        dismiss()
                     }
                     .fontWeight(.semibold)
-                    .disabled(!isFormValid)
+                    .accessibilityIdentifier("connection-save")
                 }
             }
+            .alert("Unable to Save Connection", isPresented: .init(
+                get: { saveError != nil }, set: { if !$0 { saveError = nil } }
+            )) {
+                Button("Close", role: .cancel) { saveError = nil }
+            } message: { Text(saveError ?? "") }
             .onAppear {
-                if let p = existingProfile {
-                    label = p.label
-                    host = p.host
-                    port = String(p.port)
-                    username = p.username
-                    authType = p.authType
-                    // Picker tags are SSHKey.syncID. Older profiles stored
-                    // the device-specific keychainID — convert to syncID so
-                    // the picker preselects correctly. Save() will then
-                    // persist the syncID and the legacy value vanishes.
-                    if let stored = p.keyID, !stored.isEmpty {
-                        if keys.contains(where: { $0.syncID == stored }) {
-                            selectedKeyID = stored
-                        } else if let match = keys.first(where: { $0.keychainID == stored }) {
-                            selectedKeyID = match.syncID
-                        } else {
-                            selectedKeyID = stored
-                        }
-                    } else {
-                        selectedKeyID = nil
-                    }
-                    isFavorite = p.isFavorite
-                    groupName = p.groupName ?? ""
-                    colorTag = p.colorTag
+                if let stored = selectedKeyID,
+                   !keys.contains(where: { $0.syncID == stored }),
+                   let match = keys.first(where: { $0.keychainID == stored }) {
+                    selectedKeyID = match.syncID
                 }
             }
         }
@@ -308,14 +286,23 @@ struct ConnectionFormView: View {
             }
         }
         .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .accessibilityLabel(Text(LocalizedStringKey(name?.capitalized ?? "No Color")))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func formField(_ title: String, text: Binding<String>, placeholder: String = "", keyboard: Any? = nil, autocap: Bool = true) -> some View {
-        TextField(LocalizedStringKey(title), text: text, prompt: Text(LocalizedStringKey(placeholder)))
-            .font(.body)
-            .iOSOnlyTextInputAutocapitalization(autocap)
-            .autocorrectionDisabled()
-            .iOSOnlyKeyboardType(keyboard)
+        LabeledContent {
+            TextField(LocalizedStringKey(title), text: text, prompt: Text(LocalizedStringKey(placeholder)))
+                .font(.body)
+                .multilineTextAlignment(.trailing)
+                .iOSOnlyTextInputAutocapitalization(autocap)
+                .autocorrectionDisabled()
+                .iOSOnlyKeyboardType(keyboard)
+                .accessibilityIdentifier("connection-\(title.lowercased())")
+        } label: {
+            Text(LocalizedStringKey(title))
+        }
     }
 
     private func validatePort() {
@@ -416,23 +403,38 @@ struct ConnectionFormView: View {
     }
 
     private func save() {
-        let portInt = parsedPort ?? 22
-        let effectiveLabel = label.isEmpty ? "\(username)@\(host)" : label
+        guard isFormValid, let portInt = parsedPort else {
+            saveError = ConnectionSaveError.invalidEndpoint.localizedDescription
+            return
+        }
+        if authType == .key && !keys.contains(where: { $0.syncID == selectedKeyID }) {
+            saveError = ConnectionSaveError.missingKey.localizedDescription
+            return
+        }
+        let host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let username = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveLabel = trimmedLabel.isEmpty ? "\(username)@\(host)" : trimmedLabel
         let trimmedGroup = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
-        viewModel.saveConnection(
-            profile: existingProfile,
-            label: effectiveLabel,
-            host: host,
-            port: portInt,
-            username: username,
-            authType: authType,
-            password: authType == .password ? password : nil,
-            keyID: authType == .key ? selectedKeyID : nil,
-            isFavorite: isFavorite,
-            groupName: trimmedGroup.isEmpty ? nil : trimmedGroup,
-            colorTag: colorTag,
-            modelContext: modelContext
-        )
+        do {
+            _ = try viewModel.saveConnection(
+                profile: existingProfile,
+                label: effectiveLabel,
+                host: host,
+                port: portInt,
+                username: username,
+                authType: authType,
+                password: authType == .password ? password : nil,
+                keyID: authType == .key ? selectedKeyID : nil,
+                isFavorite: isFavorite,
+                groupName: trimmedGroup.isEmpty ? nil : trimmedGroup,
+                colorTag: colorTag,
+                modelContext: modelContext
+            )
+            dismiss()
+        } catch {
+            saveError = String(localized: "Save failed. Your draft has been kept; try again. \(error.localizedDescription)")
+        }
     }
 }
 

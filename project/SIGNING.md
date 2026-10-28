@@ -44,6 +44,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\init-xtool.ps1
 .\一键签名安装.cmd --check
 ```
 
+签名安装一个本地 IPA（跳过 Actions 下载，其余校验/签名/安装不变）：
+
+```powershell
+.\一键签名安装.cmd D:\path\to\MyApp.ipa
+```
+
+本地 IPA 同样要求单主应用、无 App 扩展或 Watch App，签名后仍写入 `.xtool-output/`。
+
 ## 本地数据与测试
 
 `.xtool-local.json` 保存仓库和工具路径、证书目录及可选设备 UDID；`.xtool-output/` 保存产物与安装记录。

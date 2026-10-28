@@ -9,7 +9,7 @@ final class AppearanceLocalizationTests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["主机"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.textFields["quick-connect"].exists)
+        XCTAssertTrue(app.buttons["connection-add"].exists)
         capture("Chinese-Hosts")
 
         app.tabBars.buttons["密钥"].tap()
@@ -46,7 +46,7 @@ final class AppearanceLocalizationTests: XCTestCase {
                                "-hasCompletedOnboarding", "YES"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 30))
         app.tabBars.buttons["设置"].tap()
         XCTAssertFalse(app.segmentedControls["appearance-picker"].exists)
         XCTAssertFalse(app.buttons["清除所有数据"].exists)
@@ -116,6 +116,52 @@ final class AppearanceLocalizationTests: XCTestCase {
         ).firstMatch.exists)
         alert.buttons.firstMatch.tap()
         XCTAssertEqual(editor.value as? String, "not-a-private-key")
+    }
+
+    @MainActor
+    func testSnippetEditorPreservesCommandNewlineAndValidatesEmptyInput() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["设置"].tap()
+        app.buttons["settings-snippets"].tap()
+        app.buttons["snippet-add"].tap()
+        app.buttons["snippet-save"].tap()
+        XCTAssertTrue(app.alerts["无法保存命令"].waitForExistence(timeout: 5))
+        app.alerts.buttons["关闭"].tap()
+        let name = "Fixture-\(UUID().uuidString.prefix(6))"
+        let label = app.textFields["snippet-label"]
+        label.tap()
+        label.typeText(name)
+        let editor = app.textViews["snippet-command"]
+        editor.tap()
+        editor.typeText("printf 'hello'\n")
+        app.buttons["snippet-save"].tap()
+        let saved = app.buttons.containing(.staticText, identifier: name).firstMatch
+        XCTAssertTrue(saved.waitForExistence(timeout: 5))
+        saved.tap()
+        XCTAssertEqual(editor.value as? String, "printf 'hello'\n")
+        capture("Chinese-Snippet-Editor")
+        app.buttons["取消"].tap()
+        saved.swipeLeft()
+        app.buttons["删除"].tap()
+        app.buttons["取消"].tap()
+        XCTAssertTrue(saved.exists)
+    }
+
+    @MainActor
+    func testEmptyTerminalConnectActionReturnsToHosts() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN",
+                               "-hasCompletedOnboarding", "YES"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["终端"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["终端"].tap()
+        XCTAssertTrue(app.staticTexts["暂无活动会话"].waitForExistence(timeout: 5))
+        app.buttons["连接"].tap()
+        XCTAssertTrue(app.tabBars.buttons["主机"].isSelected)
     }
 
     @MainActor

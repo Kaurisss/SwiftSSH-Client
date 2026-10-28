@@ -25,18 +25,15 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
     private let host: String
     private let port: Int
     private let modelContainer: ModelContainer
-    private let promptHandler: @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
 
     init(
         host: String,
         port: Int,
-        modelContainer: ModelContainer,
-        promptHandler: @escaping @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        modelContainer: ModelContainer
     ) {
         self.host = host
         self.port = port
         self.modelContainer = modelContainer
-        self.promptHandler = promptHandler
     }
 
     func validateHostKey(
@@ -51,7 +48,6 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
         let host = self.host
         let port = self.port
         let container = self.modelContainer
-        let promptHandler = self.promptHandler
 
         // Do all the async work off the event loop, then resolve the promise
         Task {
@@ -63,7 +59,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
                     presentedFingerprint: presentedFingerprint,
                     keyType: keyType,
                     container: container,
-                    promptHandler: promptHandler
+                    promptHandler: nil
                 )
                 switch result {
                 case .accept:
@@ -79,14 +75,15 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 
     // MARK: - Core Evaluation Logic
 
-    private static func evaluate(
+    @MainActor
+    static func evaluate(
         host: String,
         port: Int,
         presentedKeyData: Data,
         presentedFingerprint: String,
         keyType: String,
         container: ModelContainer,
-        promptHandler: @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        promptHandler: (@Sendable (HostKeyPromptType) async -> HostKeyPromptResult)?
     ) async throws -> HostKeyPromptResult {
         let context = ModelContext(container)
         let identifier = "\(host):\(port)"
@@ -96,55 +93,39 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
         )
         let matches = try context.fetch(descriptor)
 
-        if let existing = matches.first {
-            // We have a stored key for this host
-            if existing.publicKeyData == presentedKeyData {
-                // Key matches -- TOFU success, update last-seen
-                existing.lastSeenAt = Date()
-                try context.save()
-                return .accept
-            } else {
-                // KEY CHANGED -- ask the user
-                let oldFingerprint = existing.fingerprintSHA256
-                let decision = await promptHandler(
-                    .changedKey(
-                        oldFingerprint: oldFingerprint,
-                        newFingerprint: presentedFingerprint,
-                        keyType: keyType
-                    )
-                )
-                if decision == .accept {
-                    existing.publicKeyData = presentedKeyData
-                    existing.fingerprintSHA256 = presentedFingerprint
-                    existing.keyTypeDescription = keyType
-                    existing.lastSeenAt = Date()
-                    try context.save()
-
-                    // Also update Keychain copy
-                    try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
-                }
-                return decision
-            }
-        } else {
-            // First connection to this host -- ask user to accept
-            let decision = await promptHandler(
-                .newHost(fingerprint: presentedFingerprint, keyType: keyType)
-            )
-            if decision == .accept {
-                let knownHost = KnownHost(
-                    host: host,
-                    port: port,
-                    keyTypeDescription: keyType,
-                    fingerprintSHA256: presentedFingerprint,
-                    publicKeyData: presentedKeyData
-                )
-                context.insert(knownHost)
-                try context.save()
-
-                try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
-            }
-            return decision
+        if let existing = matches.first, existing.publicKeyData == presentedKeyData {
+            existing.lastSeenAt = Date()
+            try context.save()
+            return .accept
         }
+        guard let promptHandler else {
+            throw HostKeyApprovalRequired(keyData: presentedKeyData,
+                fingerprint: presentedFingerprint, keyType: keyType)
+        }
+        let prompt: HostKeyPromptType
+        if let existing = matches.first {
+            prompt = .changedKey(oldFingerprint: existing.fingerprintSHA256,
+                newFingerprint: presentedFingerprint, keyType: keyType)
+        } else {
+            prompt = .newHost(fingerprint: presentedFingerprint, keyType: keyType)
+        }
+        let decision = await promptHandler(prompt)
+        guard decision == .accept else { return decision }
+
+        // Another window may have trusted this host while this prompt was open.
+        let saveContext = ModelContext(container)
+        if let existing = try saveContext.fetch(descriptor).first {
+            existing.publicKeyData = presentedKeyData
+            existing.fingerprintSHA256 = presentedFingerprint
+            existing.keyTypeDescription = keyType
+            existing.lastSeenAt = Date()
+        } else {
+            saveContext.insert(KnownHost(host: host, port: port, keyTypeDescription: keyType,
+                fingerprintSHA256: presentedFingerprint, publicKeyData: presentedKeyData))
+        }
+        try saveContext.save()
+        try? KeychainService.saveHostKey(host: host, port: port, keyData: presentedKeyData)
+        return decision
     }
 
     // MARK: - Helpers
@@ -157,7 +138,7 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 
     static func sha256Fingerprint(of data: Data) -> String {
         let digest = SHA256.hash(data: data)
-        let base64 = Data(digest).base64EncodedString()
+        let base64 = Data(digest).base64EncodedString().replacingOccurrences(of: "=", with: "")
         return "SHA256:\(base64)"
     }
 
@@ -176,26 +157,42 @@ final class TOFUHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, @unc
 // MARK: - SSHHostKeyValidator convenience
 
 extension SSHHostKeyValidator {
-    /// Creates a TOFU (Trust On First Use) host key validator that stores known
-    /// host keys in SwiftData / Keychain and prompts the user when a key is new
-    /// or has changed.
+    /// Checks known keys; new or changed keys fail with HostKeyApprovalRequired.
     static func tofu(
         host: String,
         port: Int,
-        modelContainer: ModelContainer,
-        promptHandler: @escaping @Sendable (HostKeyPromptType) async -> HostKeyPromptResult
+        modelContainer: ModelContainer
     ) -> SSHHostKeyValidator {
         let validator = TOFUHostKeyValidator(
             host: host,
             port: port,
-            modelContainer: modelContainer,
-            promptHandler: promptHandler
+            modelContainer: modelContainer
         )
         return .custom(validator)
     }
 }
 
 // MARK: - Errors
+
+struct HostKeyApprovalRequired: Error {
+    let keyData: Data
+    let fingerprint: String
+    let keyType: String
+}
+
+final class PinnedHostKeyValidator: NIOSSHClientServerAuthenticationDelegate, Sendable {
+    let keyData: Data
+
+    init(keyData: Data) { self.keyData = keyData }
+
+    func validateHostKey(hostKey: NIOSSHPublicKey, validationCompletePromise: EventLoopPromise<Void>) {
+        if TOFUHostKeyValidator.serializePublicKey(hostKey) == keyData {
+            validationCompletePromise.succeed(())
+        } else {
+            validationCompletePromise.fail(HostKeyValidationError.rejected)
+        }
+    }
+}
 
 enum HostKeyValidationError: LocalizedError {
     case rejected

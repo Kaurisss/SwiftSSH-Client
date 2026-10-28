@@ -12,6 +12,7 @@ DerivedData/
 
 # Python test caches
 __pycache__/
+SwiftSSHTests/Fixtures/ssh-integration.json
 
 # Swift Package Manager
 .swiftpm/
@@ -37,3 +38,5 @@ fastlane/test_output
 
 # Claude Code local tooling state
 .claude/
+
+project/*

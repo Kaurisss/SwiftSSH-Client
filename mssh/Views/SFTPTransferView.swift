@@ -2,43 +2,48 @@ import SwiftUI
 
 struct SFTPTransferView: View {
     let fileName: String
-    let progress: Double
     let transferType: SFTPViewModel.TransferType
+    let isCancelling: Bool
+    let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: AppSpacing.lg) {
-            Image(systemName: transferType == .download ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(AppColors.accent)
-                .symbolEffect(.pulse, isActive: progress < 1.0)
-
-            Text(transferType == .download ? String(localized: "Downloading") : String(localized: "Uploading"))
-                .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                .foregroundStyle(AppColors.textPrimary)
-
-            Text(fileName)
-                .font(AppFonts.monoCaption)
-                .foregroundStyle(AppColors.textSecondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            if progress < 1.0 {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(AppColors.accent)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(AppColors.connected)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppSpacing.md) {
+                status
+                Spacer(minLength: 0)
+                cancelButton
+            }
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                status
+                cancelButton
             }
         }
-        .padding(AppSpacing.xl)
-        .background(AppColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(AppColors.border, lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.4), radius: 20)
+        .padding(AppSpacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private var status: some View {
+        HStack(spacing: AppSpacing.md) {
+            ProgressView()
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(isCancelling ? String(localized: "Cancelling…")
+                     : transferType == .download ? String(localized: "Downloading") : String(localized: "Uploading"))
+                    .font(.subheadline.weight(.medium))
+                Text(fileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var cancelButton: some View {
+        Button("Cancel", role: .cancel, action: onCancel)
+            .buttonStyle(.bordered)
+            .disabled(isCancelling)
+            .accessibilityIdentifier("sftp-cancel-transfer")
     }
 }

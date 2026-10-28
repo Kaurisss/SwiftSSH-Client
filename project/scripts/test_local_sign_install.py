@@ -135,6 +135,17 @@ class SigningTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "只包含一个 IPA"):
                         module.download_ipa({"ghPath": "gh", "repository": "owner/repo"})
 
+    def test_local_ipa_skips_download_and_missing_path_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mine.ipa"
+            path.write_bytes(b"fixture")
+            with patch.object(module, "OUTPUT", Path(directory) / "out"), patch.object(module, "download_ipa") as download:
+                self.assertEqual(module.resolve_ipa({}, str(path)), path.resolve())
+                download.assert_not_called()
+                with self.assertRaisesRegex(ValueError, "找不到 IPA"):
+                    module.resolve_ipa({}, str(Path(directory) / "missing.ipa"))
+                download.assert_not_called()
+
     def test_ipa_structure_and_extensions(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "test.ipa"

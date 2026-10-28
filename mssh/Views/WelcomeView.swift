@@ -11,24 +11,10 @@ struct WelcomeView: View {
                     .foregroundStyle(AppColors.accent)
                     .accessibilityHidden(true)
 
-                Text("Welcome to SwiftSSH")
+                Text("SwiftSSH")
                     .font(.system(.title, design: .monospaced).weight(.bold))
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
-
-                Text("Manage your servers from iPhone and iPad.")
-                    .foregroundStyle(AppColors.textSecondary)
-                    .multilineTextAlignment(.center)
-
-                VStack(alignment: .leading, spacing: AppSpacing.lg) {
-                    Label("Organize hosts, groups and favorites", systemImage: "server.rack")
-                    Label("Connect with a password or SSH key", systemImage: "key.fill")
-                    Label("Use a terminal and transfer files with SFTP", systemImage: "terminal")
-                    Label("Save commands for quick access", systemImage: "text.badge.plus")
-                }
-                .foregroundStyle(AppColors.textPrimary)
-                .padding(AppSpacing.lg)
-                .appCard()
 
                 Text("Connections are stored locally. Passwords and private keys use this device's Keychain. App-managed cloud sync is disabled.")
                     .font(.footnote)
@@ -37,6 +23,7 @@ struct WelcomeView: View {
 
                 Button("Get Started", action: onComplete)
                     .buttonStyle(.borderedProminent)
+                    .foregroundStyle(AppColors.onEmphasis)
                     .tint(AppColors.accent)
             }
             .padding(AppSpacing.xl)

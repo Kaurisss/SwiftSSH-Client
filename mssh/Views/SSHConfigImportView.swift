@@ -232,6 +232,7 @@ struct SSHConfigImportView: View {
                     systemImage: "network.slash",
                     description: Text("No concrete host entries were found in the config file. Wildcard-only configs cannot be imported as connection profiles.")
                 )
+                .listRowSeparator(.hidden)
             } else {
                 Section {
                     ForEach($selections) { $selection in

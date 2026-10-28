@@ -5,24 +5,36 @@
 
 ## 当前基线
 
-- 主机分组、收藏、搜索、SSH config 导入。
-- 密码 / SSH 密钥登录、首次连接主机指纹确认。
-- SwiftTerm 交互式终端、多个会话、iPad 分屏、常用命令。
-- SFTP 目录浏览、上传、下载。
+- 主机分组、收藏、搜索、SSH config 导入；通过右上角「＋」新增连接。
+- 密码 / SSH 密钥登录、首次连接及密钥变更确认；核对指纹时保留等待状态。
+- SwiftTerm 交互式终端、多个会话、iPad 分屏、常用命令搜索与原文保存。
+- SFTP 目录浏览、文件搜索、按名称/修改时间/大小排序、隐藏文件开关。
+- SFTP 分块上传下载及取消，上传拒绝覆盖远程同名文件；下载完成后可保存到“文件”或分享。
+- 点按文件直接浏览：Runestone 文本编辑器（行号、查找、JSON/YAML/Bash 高亮）及系统图片/PDF 预览；长按保留详情、下载、删除操作。
 - 本地 SwiftData 数据库；密码和私钥仅保存到设备 Keychain。
 - 不启用应用管理的 iCloud 同步、自动云端导入、打赏或占位端口转发。
 - 数据库打开失败显示错误及重试入口，保留数据库，不自动清空或改用临时内存库。
 
 界面支持简体中文和英文，默认跟随设备语言。应用外观默认跟随系统，也可在“设置 → 应用外观”中选择浅色或深色。
-默认终端主题随外观切换，其他终端主题仍可独立选择。沿用上游应用图标。
+默认终端主题随外观切换，其他终端主题仍可独立选择。应用图标使用黑白 `$`，随主屏幕图标外观切换浅深色。
 系统“文件”选择器仍可由用户主动选择 iCloud Drive 等文件提供者；这不是应用自动同步。
+
+## SFTP 在线编辑
+
+- 文本上限 2 MiB；图片/PDF 预览上限 20 MiB。超限或不支持的文件仍可下载。
+- 支持 UTF-8（含 BOM）和带 BOM 的 UTF-16，保留原编码、换行符和末尾换行；混合换行及二进制内容不开放文本编辑。
+- 显式保存；关闭前处理未保存修改。保存失败保留草稿，可导出；草稿仅在本次页面会话中保留，不提供崩溃恢复。
+- 写回需要服务器公布 OpenSSH `posix-rename@openssh.com` v1：同目录暂存，保留 mode/UID/GID，提交前检查原内容，再原子替换并回读。不支持时不降级为截断覆盖。
+- 首次保存会说明替换 inode 对 ACL、扩展属性、硬链接关系的影响。符号链接、特殊文件和类型未知的文件不开放编辑。
+- 冲突检查为提交前的乐观检查，不锁定其他远端写入者；响应丢失时保留草稿，要求核对远端内容。
+- Citadel 仍基于 0.12.1，本地补丁及验证命令见 [Vendor/Citadel-PATCH.md](Vendor/Citadel-PATCH.md)。Runestone 固定 0.5.2，TreeSitterLanguages 固定 0.1.10。
 
 ## GitHub Actions 构建 unsigned IPA
 
 私有仓库：https://github.com/Kaurisss/SwiftSSH-Client
 
 在仓库 **Actions → Build unsigned IPA → Run workflow** 手动启动。
-工作流使用 macOS 26 / Xcode 26.6，生成工程、构建未签名 Release 归档，并将
+工作流使用 macOS 26 ARM / Xcode 26.6，安装 Metal 工具链，生成工程、构建未签名 Release 归档，并将
 `Payload/SwiftSSH.app` 打包为 IPA。不需要 Apple 证书、描述文件或签名 Secrets。
 
 构建成功后下载 **Artifacts → SwiftSSH-unsigned**，解压得到
@@ -33,7 +45,14 @@ unsigned IPA 需自行签名后才能安装到常规 iPhone / iPad。
 Windows 用户可用 [project/初始化.cmd](project/初始化.cmd) 配置本地证书，
 再运行 [project/一键签名安装.cmd](project/一键签名安装.cmd) 自动下载、签名和安装，
 详见 [SIGNING.md](project/SIGNING.md)。本地流程不需要 WSL 或 xtool。
-此工作流会先运行单元测试和中文界面/外观切换测试，上传 `interface-screenshots`，然后构建设备端 Release IPA。
+默认勾选 **Run simulator tests before building IPA**，先运行单元测试和界面测试、上传 `interface-screenshots`，再构建设备端 Release IPA。
+取消勾选后仅做配置检查、编译归档和 IPA 打包，跳过模拟器测试及测试 SSH 服务。
+
+仅编译打包也可通过 CLI 启动：
+
+```bash
+gh workflow run unsigned-ipa.yml --ref codex/overnight-experience -f run_tests=false
+```
 
 ## 在 Mac 上运行
 
@@ -74,6 +93,7 @@ DESTINATION='platform=iOS Simulator,name=iPhone 16' bash build.sh
 - 本地数据库写入后重新打开。
 - 损坏数据库报错时保留原文件及相邻数据库。
 - 密码、私钥仅存在设备本地 Keychain。
+- SFTP 目录失败重试、返回历史、搜索排序、名称校验及下载隔离。
 
 跨平台配置自检（Python 3.10+，无需额外依赖）：
 
@@ -83,7 +103,12 @@ python -m unittest discover -s scripts -p test_interface.py -v
 ```
 
 随后在测试服务器做烟测：密码登录、Ed25519 登录、拒绝未知指纹、终端输入/调整尺寸、
-SFTP 小文件上传下载、后台返回后解锁。当前没有真实服务器连接验证。
+SFTP 小文件上传下载、后台返回后解锁。
+CI 已通过实际 OpenSSH 回环服务的 Ed25519 认证、主机指纹、命令和 SFTP 文件往返测试。
+上次完整验证通过 50 项单元测试和 7 项 UI 测试，覆盖延迟核对指纹、分块传输、
+中文输入、正常退出和重新连接。运行记录见 [IMPROVEMENTS.md](IMPROVEMENTS.md)。
+测试密钥临时生成，不使用个人服务器凭据。普通本地构建未配置该测试服务时，会明确跳过回环测试。
+个人服务器及真机烟测仍待执行。
 
 ## 文件位置
 
@@ -99,4 +124,5 @@ SFTP 小文件上传下载、后台返回后解锁。当前没有真实服务器
 
 macOS、云同步、打赏等上游源码保留作参考，已从当前 target 排除。
 `project.yml.full`、旧归档/发布脚本和商店资料同样是上游参考文件，不是本分支构建入口。
-SFTP 沿用上游整文件读入内存的实现，首版先用于小文件传输。
+SFTP 每次读写 32,000 字节；下载通过临时文件完成后再替换目标，失败保留原本地文件。
+首次确认指纹会重新建立一次握手，并固定校验刚确认的密钥。

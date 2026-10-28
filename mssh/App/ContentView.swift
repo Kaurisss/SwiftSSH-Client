@@ -24,7 +24,7 @@ struct ContentView: View {
             }
 
             Tab("Terminal", systemImage: "terminal.fill", value: .terminal) {
-                TerminalTabContent()
+                TerminalTabContent(selectedTab: $selectedTab)
             }
             .badge(sessionManager.sessions.count)
 
@@ -41,6 +41,15 @@ struct ContentView: View {
         }
         .tint(AppColors.accent)
         .appTheme()
+        .alert("Close \(sessionManager.sessionPendingClose?.title ?? "")?", isPresented: .init(
+            get: { sessionManager.sessionPendingClose != nil },
+            set: { if !$0 { sessionManager.sessionPendingClose = nil } }
+        ), presenting: sessionManager.sessionPendingClose) { session in
+            Button("Disconnect", role: .destructive) {
+                sessionManager.closeSession(session.id)
+            }
+            Button("Cancel", role: .cancel) { sessionManager.sessionPendingClose = nil }
+        } message: { _ in EmptyView() }
     }
 }
 
@@ -48,20 +57,17 @@ struct ContentView: View {
 
 private struct TerminalTabContent: View {
     @Environment(SessionManager.self) private var sessionManager
+    @Binding var selectedTab: ContentView.AppTab
 
     var body: some View {
         if sessionManager.sessions.isEmpty {
             NavigationStack {
-                VStack(spacing: AppSpacing.lg) {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 40))
-                        .foregroundStyle(AppColors.textTertiary)
-                    Text("No Active Sessions")
-                        .font(AppFonts.subheading)
-                        .foregroundStyle(AppColors.textSecondary)
-                    Text("Connect to a server from the Connections tab")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.textTertiary)
+                ContentUnavailableView {
+                    Label("No Active Sessions", systemImage: "terminal")
+                } actions: {
+                    Button("Connect") { selectedTab = .connections }
+                        .buttonStyle(.borderedProminent)
+                        .foregroundStyle(AppColors.onEmphasis)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppColors.background)
@@ -89,7 +95,6 @@ private struct iPhoneConnectionsView: View {
     /// where the sheet captured `selectedConnection == nil` on first edit and
     /// rendered "New Connection" instead of the existing profile.
     @State private var editingProfile: ConnectionProfile?
-    @State private var quickConnectText = ""
     @State private var showClearAlert = false
     @State private var showImportConfig = false
     @State private var searchText = ""
@@ -106,38 +111,24 @@ private struct iPhoneConnectionsView: View {
             // row. ScrollView + VStack does NOT support .swipeActions, which
             // is why swipe-to-edit/delete didn't fire on iPhone.
             List {
-                Section {
-                    quickConnectBar
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-
                 if !sessionManager.sessions.isEmpty {
-                    Section {
+                    Section("Active Sessions") {
                         ForEach(sessionManager.sessions) { session in
                             activeSessionRow(session)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        sessionManager.closeSession(session.id)
+                                        sessionManager.requestCloseSession(session.id)
                                     } label: {
                                         Label("Close", systemImage: "xmark.circle")
                                     }
                                 }
                         }
-                    } header: {
-                        sectionHeader(title: String(localized: "Active Sessions"), count: sessionManager.sessions.count)
                     }
                 }
 
                 connectionListSections
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(AppColors.background)
+            .listStyle(.insetGrouped)
             .searchable(text: $searchText, prompt: "Search connections")
             .navigationTitle("SwiftSSH")
             .toolbar {
@@ -148,6 +139,7 @@ private struct iPhoneConnectionsView: View {
                         } label: {
                             Label("New Connection", systemImage: "plus")
                         }
+                        .accessibilityIdentifier("connection-new")
                         Button {
                             showImportConfig = true
                         } label: {
@@ -164,6 +156,7 @@ private struct iPhoneConnectionsView: View {
                     } label: {
                         Label("Add Connection", systemImage: "plus")
                     }
+                    .accessibilityIdentifier("connection-add")
                 }
             }
             .alert("Clear All Connections?", isPresented: $showClearAlert) {
@@ -189,41 +182,6 @@ private struct iPhoneConnectionsView: View {
         }
     }
 
-    // MARK: - Quick Connect Bar (List row body — wrapper handles insets/background)
-
-    private var quickConnectBar: some View {
-        HStack(spacing: AppSpacing.sm) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 13))
-                .foregroundStyle(AppColors.accent)
-
-            TextField("user@host:port", text: $quickConnectText)
-                .textFieldStyle(.plain)
-                .accessibilityLabel("Quick Connect")
-                .accessibilityIdentifier("quick-connect")
-                .font(.body)
-                .iOSOnlyTextInputAutocapitalization()
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .keyboardType(.URL)
-                #endif
-                .submitLabel(.go)
-                .onSubmit { performQuickConnect() }
-                .foregroundStyle(AppColors.textPrimary)
-
-            if !quickConnectText.isEmpty {
-                Button(action: performQuickConnect) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(AppColors.accent)
-                }
-            }
-        }
-        .padding(.horizontal, AppSpacing.lg)
-        .frame(minHeight: 48)
-        .background(AppColors.surface, in: Capsule())
-    }
-
     // MARK: - Active session row (extracted so the List section stays compact)
 
     private func activeSessionRow(_ session: SessionViewModel) -> some View {
@@ -233,25 +191,30 @@ private struct iPhoneConnectionsView: View {
         } label: {
             HStack(spacing: AppSpacing.md) {
                 StatusDot(isConnected: session.isConnected)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.title)
-                        .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                        .foregroundStyle(AppColors.textPrimary)
-                    Text(session.isConnected ? String(localized: "Connected") : session.statusMessage)
-                        .font(AppFonts.monoCaption)
-                        .foregroundStyle(session.isConnected ? AppColors.connected : AppColors.textSecondary)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    if !session.isConnected {
+                        Text(session.statusMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
-            .appCard(isActive: session.isConnected)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("active-session-\(session.id)")
+        .accessibilityValue(session.isConnected ? String(localized: "Connected") : session.statusMessage)
     }
 
     // MARK: - Saved connection sections (rendered inside the parent List)
@@ -272,7 +235,7 @@ private struct iPhoneConnectionsView: View {
                         connectionRow(connection)
                     }
                 } header: {
-                    sectionHeader(title: section.title, count: section.items.count)
+                    Text(section.title)
                 }
             }
         }
@@ -285,9 +248,6 @@ private struct iPhoneConnectionsView: View {
             ConnectionRow(profile: connection)
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 modelContext.delete(connection)
@@ -334,28 +294,6 @@ private struct iPhoneConnectionsView: View {
         }
     }
 
-    /// Custom section header that mimics `AppSectionHeader` but plays nicely
-    /// inside `List` (no extra leading padding, dark background).
-    private func sectionHeader(title: String, count: Int?) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AppColors.textSecondary)
-            if let count {
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppColors.accent)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(AppColors.accentDim)
-                    .clipShape(Capsule())
-            }
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-    }
-
     private var emptyState: some View {
         VStack(spacing: AppSpacing.md) {
             Image(systemName: "server.rack")
@@ -366,10 +304,6 @@ private struct iPhoneConnectionsView: View {
                 .font(AppFonts.subheading)
                 .foregroundStyle(AppColors.textSecondary)
 
-            Text("Add a connection or use Quick Connect")
-                .font(.caption)
-                .foregroundStyle(AppColors.textTertiary)
-
             Button {
                 showAddConnection = true
             } label: {
@@ -379,6 +313,7 @@ private struct iPhoneConnectionsView: View {
                     .padding(.vertical, AppSpacing.sm)
             }
             .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppColors.onEmphasis)
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity)
@@ -410,42 +345,6 @@ private struct iPhoneConnectionsView: View {
         }
     }
 
-    private func performQuickConnect() {
-        let text = quickConnectText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-
-        var username = "root"
-        var host = text
-        var port = 22
-
-        if let atIndex = text.firstIndex(of: "@") {
-            username = String(text[text.startIndex..<atIndex])
-            host = String(text[text.index(after: atIndex)...])
-        }
-        if let colonIndex = host.lastIndex(of: ":") {
-            let portString = String(host[host.index(after: colonIndex)...])
-            if let parsedPort = Int(portString), parsedPort > 0, parsedPort <= 65535 {
-                port = parsedPort
-                host = String(host[host.startIndex..<colonIndex])
-            }
-        }
-
-        guard !host.isEmpty else { return }
-
-        let label = "\(username)@\(host)"
-        let profile = ConnectionProfile(
-            label: label,
-            host: host,
-            port: port,
-            username: username,
-            authType: .password
-        )
-        modelContext.insert(profile)
-        try? modelContext.save()
-
-        quickConnectText = ""
-        connect(to: profile)
-    }
 }
 
 // MARK: - iPad Connections View (Split View)
@@ -458,7 +357,6 @@ private struct iPadConnectionsView: View {
     /// Edit-sheet driver (uses `.sheet(item:)` to dodge the SwiftUI race that
     /// caused the form to render as "New Connection" on first edit).
     @State private var editingProfile: ConnectionProfile?
-    @State private var quickConnectText = ""
     @State private var selectedProfile: ConnectionProfile?
     @State private var showClearAlert = false
     @State private var showImportConfig = false
@@ -473,31 +371,6 @@ private struct iPadConnectionsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedProfile) {
-                // Quick connect
-                Section {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(AppColors.accent)
-                        TextField("user@host:port", text: $quickConnectText)
-                            .textFieldStyle(.plain)
-                            .accessibilityLabel("Quick Connect")
-                            .accessibilityIdentifier("quick-connect")
-                            .font(.body)
-                            .iOSOnlyTextInputAutocapitalization()
-                            .autocorrectionDisabled()
-                            #if os(iOS)
-                            .keyboardType(.URL)
-                            #endif
-                            .submitLabel(.go)
-                            .onSubmit { performQuickConnect() }
-                    }
-                    .padding(.horizontal, AppSpacing.lg)
-                    .frame(minHeight: 48)
-                    .background(AppColors.surface, in: Capsule())
-                    .listRowBackground(Color.clear)
-                }
-
                 // Active sessions
                 if !sessionManager.sessions.isEmpty {
                     Section("Active Sessions") {
@@ -520,7 +393,7 @@ private struct iPadConnectionsView: View {
                             .listRowBackground(AppColors.surface)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    sessionManager.closeSession(session.id)
+                                    sessionManager.requestCloseSession(session.id)
                                 } label: {
                                     Label("Close", systemImage: "xmark.circle")
                                 }
@@ -538,7 +411,7 @@ private struct iPadConnectionsView: View {
                             } label: {
                                 HStack(spacing: AppSpacing.md) {
                                     if let tag = connection.resolvedTagColor {
-                                        RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                        Capsule()
                                             .fill(tag)
                                             .frame(width: 3, height: 28)
                                     }
@@ -603,6 +476,7 @@ private struct iPadConnectionsView: View {
                         } label: {
                             Label("New Connection", systemImage: "plus")
                         }
+                        .accessibilityIdentifier("connection-new")
                         Button {
                             showImportConfig = true
                         } label: {
@@ -619,6 +493,7 @@ private struct iPadConnectionsView: View {
                     } label: {
                         Label("Add Connection", systemImage: "plus")
                     }
+                    .accessibilityIdentifier("connection-add")
                 }
             }
             .alert("Clear All Connections?", isPresented: $showClearAlert) {
@@ -650,9 +525,6 @@ private struct iPadConnectionsView: View {
                 Text("Select a connection to get started")
                     .font(AppFonts.subheading)
                     .foregroundStyle(AppColors.textSecondary)
-                Text("Or use Quick Connect in the sidebar")
-                    .font(.caption)
-                    .foregroundStyle(AppColors.textTertiary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(AppColors.background)
@@ -670,42 +542,6 @@ private struct iPadConnectionsView: View {
         }
     }
 
-    private func performQuickConnect() {
-        let text = quickConnectText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
-
-        var username = "root"
-        var host = text
-        var port = 22
-
-        if let atIndex = text.firstIndex(of: "@") {
-            username = String(text[text.startIndex..<atIndex])
-            host = String(text[text.index(after: atIndex)...])
-        }
-        if let colonIndex = host.lastIndex(of: ":") {
-            let portString = String(host[host.index(after: colonIndex)...])
-            if let parsedPort = Int(portString), parsedPort > 0, parsedPort <= 65535 {
-                port = parsedPort
-                host = String(host[host.startIndex..<colonIndex])
-            }
-        }
-
-        guard !host.isEmpty else { return }
-
-        let label = "\(username)@\(host)"
-        let profile = ConnectionProfile(
-            label: label,
-            host: host,
-            port: port,
-            username: username,
-            authType: .password
-        )
-        modelContext.insert(profile)
-        try? modelContext.save()
-
-        quickConnectText = ""
-        connect(to: profile)
-    }
 }
 
 // MARK: - Connection Row
@@ -732,44 +568,27 @@ struct ConnectionRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
-            // Color tag stripe (if set)
-            if let tag = profile.resolvedTagColor {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(tag)
-                    .frame(width: 4, height: 36)
-            }
-
-            // Server icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(AppColors.accentDim)
-                    .frame(width: 36, height: 36)
-                Image(systemName: "server.rack")
-                    .font(.system(size: 14))
-                    .foregroundStyle(AppColors.accent)
-            }
+            Image(systemName: "server.rack")
+                .font(.body)
+                .foregroundStyle(profile.resolvedTagColor ?? .secondary)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(profile.label)
-                        .font(.system(.subheadline, design: .monospaced).weight(.medium))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .lineLimit(1)
-                    if let group = profile.groupName, !group.isEmpty {
-                        Text(group)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(AppColors.textTertiary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(AppColors.surfaceElevated)
-                            .clipShape(Capsule())
-                    }
-                }
+                Text(profile.label)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
 
                 Text("\(profile.username)@\(profile.host):\(profile.port)")
-                    .font(AppFonts.monoCaption)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                if keyMissingOnDevice {
+                    Label("No Key", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(AppColors.warning)
+                }
             }
 
             Spacer()
@@ -780,33 +599,13 @@ struct ConnectionRow: View {
                 try? modelContext.save()
             } label: {
                 Image(systemName: profile.isFavorite ? "star.fill" : "star")
-                    .font(.system(size: 13))
-                    .foregroundStyle(profile.isFavorite ? Color.yellow : AppColors.textTertiary)
-                    .frame(width: 24, height: 24)
+                    .font(.body)
+                    .foregroundStyle(profile.isFavorite ? Color.yellow : .secondary)
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                if let lastConnected = profile.lastConnectedAt {
-                    Text(lastConnected, style: .relative)
-                        .font(.system(size: 10))
-                        .foregroundStyle(AppColors.textTertiary)
-                }
-                HStack(spacing: 4) {
-                    if keyMissingOnDevice {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(AppColors.warning)
-                    }
-                    Image(systemName: profile.authType == .key ? "key.fill" : "lock.fill")
-                        .font(.system(size: 9))
-                    Text(keyMissingOnDevice ? String(localized: "No Key") : (profile.authType == .key ? String(localized: "Key") : String(localized: "Pass")))
-                        .font(.system(size: 9, weight: .medium))
-                }
-                .foregroundStyle(keyMissingOnDevice ? AppColors.warning : AppColors.textTertiary)
-            }
+            .accessibilityLabel(profile.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"))
         }
-        .appCard()
     }
 }

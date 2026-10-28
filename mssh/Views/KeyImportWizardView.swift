@@ -247,7 +247,7 @@ struct KeyImportWizardView: View {
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
                                                 .background(Color.accentColor.opacity(0.15))
-                                                .cornerRadius(4)
+                                                .clipShape(Capsule())
                                         }
 
                                         Text(selection.preview.fingerprint)
@@ -319,6 +319,7 @@ struct KeyImportWizardView: View {
                 }
                 .disabled(selectedCount == 0)
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(AppColors.onEmphasis)
             }
             .padding()
         }

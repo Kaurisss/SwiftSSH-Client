@@ -6,6 +6,40 @@ import XCTest
 
 @MainActor
 final class TerminalResizeTests: XCTestCase {
+    func testTerminalOwnLayoutReportsTheLatestGridAfterTheLayoutPass() async throws {
+        let terminal = try XCTUnwrap(TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
+            as? LayoutReportingTerminalView)
+        let firstLayout = expectation(description: "First completed terminal layout")
+        var reported: (cols: Int, rows: Int, first: Bool)?
+        terminal.onLayout = { view, first in
+            reported = (view.getTerminal().cols, view.getTerminal().rows, first)
+            firstLayout.fulfill()
+        }
+        terminal.frame = CGRect(x: 0, y: 0, width: 320, height: 500)
+        terminal.layoutIfNeeded()
+        // Several frames can be assigned during a single Auto Layout pass.
+        terminal.frame.size.width = 390
+        terminal.layoutIfNeeded()
+        await fulfillment(of: [firstLayout], timeout: 3)
+        XCTAssertEqual(reported?.cols, terminal.getTerminal().cols)
+        XCTAssertEqual(reported?.rows, terminal.getTerminal().rows)
+        XCTAssertEqual(reported?.first, true)
+
+        let fontLayout = expectation(description: "Font layout without resizing the container")
+        terminal.onLayout = { view, first in
+            reported = (view.getTerminal().cols, view.getTerminal().rows, first)
+            fontLayout.fulfill()
+        }
+        terminal.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        terminal.setNeedsLayout()
+        terminal.layoutIfNeeded()
+        await fulfillment(of: [fontLayout], timeout: 3)
+        XCTAssertEqual(reported?.cols, terminal.getTerminal().cols)
+        XCTAssertEqual(reported?.rows, terminal.getTerminal().rows)
+        XCTAssertEqual(reported?.first, false)
+        terminal.onLayout = nil
+    }
+
     func testContainerInsetsActualTerminalBoundsAndReportsGridAfterLayout() throws {
         let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
         terminal.font = .monospacedSystemFont(ofSize: 14, weight: .regular)

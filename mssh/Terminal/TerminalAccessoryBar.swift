@@ -4,7 +4,7 @@ import SwiftTerm
 
 /// Custom keyboard accessory bar with terminal-essential keys for iOS.
 /// Designed with minimal dark aesthetic matching the app theme.
-final class TerminalAccessoryBar: UIView {
+final class TerminalAccessoryBar: UIView, UIScrollViewDelegate {
     weak var terminal: TerminalView?
 
     // Key definitions: (label, bytes to send, isSpecial)
@@ -46,6 +46,12 @@ final class TerminalAccessoryBar: UIView {
     private var ctrlActive: Bool { terminal?.controlModifier ?? false }
     private var ctrlButton: UIButton?
     private let feedbackGenerator = UIImpactFeedbackGenerator(style: .light)
+    private let keyScrollView = UIScrollView()
+    private let keySpacing: CGFloat = 4
+    private let keyHorizontalMargin: CGFloat = 6
+    private var keyWidthConstraints: [NSLayoutConstraint] = []
+    private var keyStride: CGFloat = 0
+    private var previousScrollWidth: CGFloat = 0
 
     // Colors matching AppColors design system
     private let bgColor = UIColor.secondarySystemBackground
@@ -71,6 +77,40 @@ final class TerminalAccessoryBar: UIView {
         fatalError("init(coder:) not implemented")
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = keyScrollView.bounds.width
+        guard width > 0, abs(width - previousScrollWidth) > 0.5 else { return }
+        previousScrollWidth = width
+        // Fit whole key slots in the viewport. A fifth key must not leave just
+        // its blank rounded edge beside the divider when the bar is at rest.
+        let usableWidth = max(1, width - 2 * keyHorizontalMargin)
+        let count = max(1, floor((usableWidth + keySpacing) / (52 + keySpacing)))
+        let keyWidth = (usableWidth - (count - 1) * keySpacing) / count
+        keyStride = keyWidth + keySpacing
+        for constraint in keyWidthConstraints { constraint.constant = keyWidth }
+        keyScrollView.setNeedsLayout()
+        keyScrollView.layoutIfNeeded()
+        keyScrollView.setContentOffset(CGPoint(x: alignedOffset(keyScrollView.contentOffset.x), y: 0), animated: false)
+    }
+
+    private func alignedOffset(_ offset: CGFloat) -> CGFloat {
+        guard keyStride > 0 else { return 0 }
+        let maximum = max(0, keyScrollView.contentSize.width - keyScrollView.bounds.width)
+        return min(maximum, max(0, (offset / keyStride).rounded() * keyStride))
+    }
+
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
+                                  targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        targetContentOffset.pointee.x = alignedOffset(targetContentOffset.pointee.x)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate {
+            scrollView.setContentOffset(CGPoint(x: alignedOffset(scrollView.contentOffset.x), y: 0), animated: true)
+        }
+    }
+
     private func setupAppearance() {
         backgroundColor = bgColor
 
@@ -87,9 +127,12 @@ final class TerminalAccessoryBar: UIView {
     }
 
     private func setupKeys() {
-        let scrollView = UIScrollView()
+        let scrollView = keyScrollView
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.clipsToBounds = true
+        scrollView.layer.mask = nil
+        scrollView.delegate = self
+        scrollView.decelerationRate = .fast
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
@@ -143,10 +186,10 @@ final class TerminalAccessoryBar: UIView {
 
         let stack = UIStackView()
         stack.axis = .horizontal
-        stack.spacing = 5
+        stack.spacing = keySpacing
         stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.layoutMargins = UIEdgeInsets(top: 5, left: 6, bottom: 5, right: 12)
+        stack.layoutMargins = UIEdgeInsets(top: 5, left: keyHorizontalMargin, bottom: 5, right: keyHorizontalMargin)
         stack.isLayoutMarginsRelativeArrangement = true
         scrollView.addSubview(stack)
 
@@ -160,18 +203,18 @@ final class TerminalAccessoryBar: UIView {
 
         for (index, keyDef) in keyDefs.enumerated() {
             let isArrow = keyDef.label.unicodeScalars.first.map { $0.value >= 0x2190 && $0.value <= 0x2193 } ?? false
-            let minWidth: CGFloat = isArrow ? 36 : (keyDef.label.count > 2 ? 44 : 34)
-
             let button = TerminalAccessoryKeyButton(type: .system)
             button.setTitle(keyDef.label, for: .normal)
 
+            let font: UIFont
             if keyDef.isModifier {
-                button.titleLabel?.font = .systemFont(ofSize: 12, weight: .bold)
+                font = .systemFont(ofSize: 12, weight: .bold)
             } else if isArrow {
-                button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+                font = .systemFont(ofSize: 16, weight: .medium)
             } else {
-                button.titleLabel?.font = .monospacedSystemFont(ofSize: 14, weight: .medium)
+                font = .monospacedSystemFont(ofSize: keyDef.label.count > 3 ? 12 : 14, weight: .medium)
             }
+            button.titleLabel?.font = font
 
             button.tintColor = keyTextColor
             button.tag = index
@@ -181,10 +224,17 @@ final class TerminalAccessoryBar: UIView {
             button.layer.borderWidth = 0.5
             button.layer.borderColor = borderColor.cgColor
 
-            let widthConstraint = button.widthAnchor.constraint(greaterThanOrEqualToConstant: minWidth)
+            let widthConstraint = button.widthAnchor.constraint(equalToConstant: 52)
             widthConstraint.isActive = true
+            keyWidthConstraints.append(widthConstraint)
             var btnConfig = UIButton.Configuration.plain()
-            btnConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
+            btnConfig.title = keyDef.label
+            btnConfig.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4)
+            btnConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+                var attributes = incoming
+                attributes.font = font
+                return attributes
+            }
             button.configuration = btnConfig
 
             if keyDef.isModifier {

@@ -2,6 +2,8 @@ import Citadel
 import Foundation
 import Observation
 import SwiftData
+import SwiftTerm
+import UIKit
 import XCTest
 @testable import SwiftSSH
 
@@ -388,27 +390,7 @@ final class SSHIntegrationTests: XCTestCase {
         defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
         let bridge = SSHTerminalBridge()
         let remote = fixture.directory + "/pty-size-" + UUID().uuidString
-        let quoted = "'" + remote.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let sftp = SFTPService(client: client)
-
-        func assertRemoteSize(cols: Int, rows: Int) async throws {
-            // Let the nonisolated UI callback reach MainActor before queuing input.
-            try await Task.sleep(for: .milliseconds(50))
-            bridge.sendToSSH(data: ArraySlice("stty size > \(quoted)\n".utf8))
-            var actual = ""
-            for _ in 0..<50 {
-                if let data = try? await client.executeCommand("cat \(quoted)") {
-                    actual = String(decoding: data.readableBytesView, as: UTF8.self)
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if actual.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-                        == [String(rows), String(cols)] { break }
-                }
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            XCTAssertEqual(actual.split(whereSeparator: { $0.isWhitespace }).map(String.init),
-                           [String(rows), String(cols)])
-            try await sftp.deleteFile(path: remote)
-        }
 
         do {
             // Layout arrives before a channel exists; this must not be dropped.
@@ -423,11 +405,11 @@ final class SSHIntegrationTests: XCTestCase {
                     bridge.resizeTerminal(cols: 93, rows: 29)
                 }
                 await fulfillment(of: [connected], timeout: 10)
-                try await assertRemoteSize(cols: attempt == 0 ? 93 : 120,
-                                           rows: attempt == 0 ? 29 : 42)
+                try await assertRemotePTYSize(bridge, client: client, path: remote,
+                                             cols: attempt == 0 ? 93 : 120, rows: attempt == 0 ? 29 : 42)
                 for cols in 100...120 { bridge.resizeTerminal(cols: cols, rows: 42) }
                 bridge.resizeTerminal(cols: 0, rows: 0) // Ignore zero-sized transition layouts.
-                try await assertRemoteSize(cols: 120, rows: 42)
+                try await assertRemotePTYSize(bridge, client: client, path: remote, cols: 120, rows: 42)
                 bridge.disconnect()
             }
             await service.disconnect()
@@ -437,6 +419,70 @@ final class SSHIntegrationTests: XCTestCase {
             await service.disconnect()
             throw error
         }
+    }
+
+    func testPTYUsesLiveSwiftTermGridDespiteOldCallbacksAndFontChanges() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let service = SSHService()
+        let client = try await service.connect(host: "127.0.0.1", port: fixture.port, username: fixture.username,
+            authMethod: .privateKey(Data(fixture.privateKey.utf8)), modelContainer: container,
+            hostKeyPrompt: { _ in .accept })
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        let bridge = SSHTerminalBridge()
+        let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
+        let viewport = TerminalContainerView(terminal: terminal)
+        viewport.frame = CGRect(x: 0, y: 0, width: 390, height: 500)
+        viewport.layoutIfNeeded()
+        bridge.terminalView = terminal
+        let remote = fixture.directory + "/pty-live-grid-" + UUID().uuidString
+        let sftp = SFTPService(client: client)
+        do {
+            let connected = expectation(description: "PTY connected with the live grid")
+            bridge.onStateChange = { connectedState, _ in if connectedState { connected.fulfill() } }
+            bridge.connect(client: client, cols: 80, rows: 24)
+            await fulfillment(of: [connected], timeout: 10)
+            let grid = terminal.getTerminal()
+            try await assertRemotePTYSize(bridge, client: client, path: remote, cols: grid.cols, rows: grid.rows)
+
+            let staleCols = grid.cols - 9
+            let staleRows = grid.rows
+            // No parent layout callback and no size delegate: the bridge must
+            // still read SwiftTerm when handling the delayed notification and input.
+            terminal.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+            viewport.frame.size.height = 300
+            viewport.layoutIfNeeded()
+            bridge.resizeTerminal(cols: staleCols, rows: staleRows)
+            try await assertRemotePTYSize(bridge, client: client, path: remote,
+                                         cols: grid.cols, rows: grid.rows)
+            bridge.resizeTerminal(cols: staleCols, rows: staleRows, force: true)
+            try await assertRemotePTYSize(bridge, client: client, path: remote,
+                                         cols: grid.cols, rows: grid.rows)
+            bridge.disconnect()
+            await service.disconnect()
+        } catch {
+            bridge.disconnect()
+            try? await sftp.deleteFile(path: remote)
+            await service.disconnect()
+            throw error
+        }
+    }
+
+    private func assertRemotePTYSize(_ bridge: SSHTerminalBridge, client: SSHClient, path: String,
+                                     cols: Int, rows: Int) async throws {
+        let quoted = "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        bridge.sendToSSH(data: ArraySlice("stty size > \(quoted)\n".utf8))
+        var actual = [String]()
+        for _ in 0..<50 {
+            if let data = try? await client.executeCommand("cat \(quoted)") {
+                actual = String(decoding: data.readableBytesView, as: UTF8.self)
+                    .split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                if actual == [String(rows), String(cols)] { break }
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(actual, [String(rows), String(cols)])
+        try await SFTPService(client: client).deleteFile(path: path)
     }
 
     func testHostKeyDecisionCanOutlastNetworkTimeout() async throws {

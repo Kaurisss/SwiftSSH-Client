@@ -18,6 +18,28 @@ private func decscusrEscape(style: AppPreferences.CursorStyle, blink: Bool) -> [
 }
 
 #if os(iOS)
+/// Observe the terminal's own layout, including font changes that don't resize its parent.
+final class LayoutReportingTerminalView: TerminalView {
+    var onLayout: ((TerminalView, Bool) -> Void)?
+    private var layoutReportPending = false
+    private var hasReportedLayout = false
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0, !layoutReportPending else { return }
+        layoutReportPending = true
+        // Read after the current Auto Layout pass, without capturing its intermediate grid.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.layoutReportPending = false
+            guard self.bounds.width > 0, self.bounds.height > 0 else { return }
+            let firstLayout = !self.hasReportedLayout
+            self.hasReportedLayout = true
+            self.onLayout?(self, firstLayout)
+        }
+    }
+}
+
 /// Padding belongs outside SwiftTerm so its grid is computed from the drawable width.
 final class TerminalContainerView: UIView {
     let terminal: TerminalView
@@ -98,6 +120,9 @@ struct TerminalViewWrapper: UIViewRepresentable {
         container.onLayout = { [weak coordinator = context.coordinator] terminal in
             coordinator?.synchronizeSize(of: terminal)
         }
+        (terminal as? LayoutReportingTerminalView)?.onLayout = { [weak coordinator = context.coordinator] terminal, firstLayout in
+            coordinator?.synchronizeSize(of: terminal, force: firstLayout)
+        }
 
         applyCursorStyle(to: terminal)
 
@@ -109,7 +134,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
     }
 
     static func makeTerminalView(backgroundColor: UIColor) -> TerminalView {
-        let terminal = TerminalView()
+        let terminal = LayoutReportingTerminalView()
         terminal.nativeBackgroundColor = backgroundColor
         terminal.backgroundColor = backgroundColor
         // Redraw at the new size; keep cached glyphs unscaled during the keyboard animation.
@@ -219,10 +244,10 @@ struct TerminalViewWrapper: UIViewRepresentable {
             usesLightPalette = light
         }
 
-        func synchronizeSize(of terminal: TerminalView) {
+        func synchronizeSize(of terminal: TerminalView, force: Bool = false) {
             guard terminal.bounds.width > 0, terminal.bounds.height > 0 else { return }
             let grid = terminal.getTerminal()
-            bridge.resizeTerminal(cols: grid.cols, rows: grid.rows)
+            bridge.resizeTerminal(cols: grid.cols, rows: grid.rows, force: force)
         }
 
         func send(source: TerminalView, data: ArraySlice<UInt8>) {

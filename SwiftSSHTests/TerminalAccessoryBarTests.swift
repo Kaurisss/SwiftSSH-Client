@@ -5,6 +5,41 @@ import XCTest
 
 @MainActor
 final class TerminalAccessoryBarTests: XCTestCase {
+    func testRestingScrollEdgesNeverShowAnEmptyPartialCapsule() throws {
+        let terminal = TerminalView()
+        let bar = TerminalAccessoryBar(terminal: terminal)
+        let scroll = try XCTUnwrap(bar.subviews.compactMap { $0 as? UIScrollView }.first)
+        let keys = buttons(in: scroll)
+        for width in [CGFloat(320), 390, 393, 430, 844, 1024] {
+            bar.frame = CGRect(x: 0, y: 0, width: width, height: 46)
+            bar.setNeedsLayout()
+            bar.layoutIfNeeded()
+            let maximum = max(0, scroll.contentSize.width - scroll.bounds.width)
+            for offset in [CGFloat(0), maximum * 0.23, maximum * 0.54, maximum] {
+                var target = CGPoint(x: offset, y: 0)
+                bar.scrollViewWillEndDragging(scroll, withVelocity: .zero, targetContentOffset: &target)
+                scroll.setContentOffset(target, animated: false)
+                scroll.layoutIfNeeded()
+                let viewport = scroll.convert(scroll.bounds, to: bar)
+                var visibleKeys = 0
+                for key in keys {
+                    let frame = key.convert(key.bounds, to: bar)
+                    guard frame.intersection(viewport).width > 0.5 else { continue }
+                    visibleKeys += 1
+                    XCTAssertGreaterThanOrEqual(frame.minX, viewport.minX - 0.5)
+                    XCTAssertLessThanOrEqual(frame.maxX, viewport.maxX + 0.5)
+                    XCTAssertFalse(key.currentTitle?.isEmpty ?? true)
+                    XCTAssertNil(key.layer.mask)
+                    XCTAssertNil(key.titleLabel?.layer.mask)
+                    XCTAssertEqual(key.alpha, 1)
+                }
+                XCTAssertGreaterThan(visibleKeys, 0)
+                XCTAssertTrue(scroll.clipsToBounds)
+                XCTAssertNil(scroll.layer.mask)
+            }
+        }
+    }
+
     func testFrequentKeysComeFirstAndArrowsSendANSISequences() throws {
         let terminal = TerminalView()
         let delegate = RecordingTerminalDelegate()

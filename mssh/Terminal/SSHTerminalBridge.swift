@@ -27,7 +27,8 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
 
     private enum PTYCommand {
         case input([UInt8])
-        case resize(TerminalSize)
+        // Queue an invalidation, never a stale snapshot of a previous layout.
+        case resize(force: Bool)
     }
 
     // Retain layout changes even while the SSH channel is still opening.
@@ -59,10 +60,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         let attempt = UUID()
         connectionID = attempt
         isDisconnecting = false
-        if let view = terminalView, view.bounds.width > 0, view.bounds.height > 0 {
-            let grid = view.getTerminal()
-            latestTerminalSize = TerminalSize(cols: grid.cols, rows: grid.rows)
-        }
+        latestTerminalSize = currentTerminalSize() ?? latestTerminalSize
         updateState(connected: false, status: String(localized: "Opening terminal..."))
 
         connectionTask = Task { [weak self] in
@@ -120,21 +118,37 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         }
     }
 
-    nonisolated func resizeTerminal(cols: Int, rows: Int) {
+    /// Read the emulator's grid after its own layout; padding and glyph metrics belong to SwiftTerm.
+    private func currentTerminalSize() -> TerminalSize? {
+        guard let view = terminalView, view.bounds.width > 0, view.bounds.height > 0 else { return nil }
+        #if os(iOS)
+        view.layoutIfNeeded()
+        #elseif os(macOS)
+        view.layoutSubtreeIfNeeded()
+        #endif
+        let grid = view.getTerminal()
+        guard grid.cols > 0, grid.rows > 0 else { return nil }
+        return TerminalSize(cols: grid.cols, rows: grid.rows)
+    }
+
+    nonisolated func resizeTerminal(cols: Int, rows: Int, force: Bool = false) {
         guard cols > 0, rows > 0 else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let size = TerminalSize(cols: cols, rows: rows)
-            guard self.latestTerminalSize != size else { return }
+            // A delegate notification can be delayed behind a newer layout/font change.
+            // With an attached view its current grid always wins over the callback snapshot.
+            let size = self.currentTerminalSize() ?? TerminalSize(cols: cols, rows: rows)
+            guard force || self.latestTerminalSize != size else { return }
             self.latestTerminalSize = size
             // Resize shares the input queue: fast pinch/layout updates cannot race
             // each other or overlap NIO writes, leaving the remote at an old size.
-            self.writeStreamContinuation?.yield(.resize(size))
+            self.writeStreamContinuation?.yield(.resize(force: force))
         }
     }
 
     private func runPTYSession(client: SSHClient, cols: Int, rows: Int, connectionID: UUID) async throws {
-        let initialSize = latestTerminalSize ?? TerminalSize(cols: max(1, cols), rows: max(1, rows))
+        let initialSize = currentTerminalSize() ?? latestTerminalSize
+            ?? TerminalSize(cols: max(1, cols), rows: max(1, rows))
         let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
             wantReply: true,
             term: "xterm-256color",
@@ -167,12 +181,27 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 guard let self else { return }
                 try Task.checkCancellation()
 
+                let readySize = await MainActor.run { () -> TerminalSize? in
+                    guard self.connectionID == connectionID else { return nil }
+                    return self.currentTerminalSize() ?? self.latestTerminalSize ?? initialSize
+                }
+                guard let readySize else { throw CancellationError() }
+                // Finish a live Window Change before publishing Connected or accepting input.
+                // This is deliberately unconditional, even if the PTY request had the same grid.
+                let appliedSize: TerminalSize?
+                do {
+                    try await outbound.changeSize(cols: readySize.cols, rows: readySize.rows,
+                                                  pixelWidth: 0, pixelHeight: 0)
+                    appliedSize = readySize
+                } catch {
+                    appliedSize = nil
+                    print("[mSSH] Initial resize failed: \(error)")
+                }
                 let isCurrent = await MainActor.run {
                     guard self.connectionID == connectionID else { return false }
-                    // Replay after PTY creation: layout may have completed before
-                    // this channel existed, or changed during the SSH handshake.
-                    writeContinuation.yield(.resize(self.latestTerminalSize ?? initialSize))
                     self.updateState(connected: true, status: String(localized: "Connected"))
+                    // Layout may have changed while changeSize was awaiting the channel.
+                    writeContinuation.yield(.resize(force: true))
                     return true
                 }
                 guard isCurrent else { throw CancellationError() }
@@ -181,12 +210,17 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 // that each `outbound.write` completes before the next one starts.
                 // This is the key fix for the Thai-character hang: no concurrent writes.
                 let writerTask = Task {
-                    var lastSize: TerminalSize?
+                    var lastSize = appliedSize
                     commandLoop: for await command in writeStream {
                         guard !Task.isCancelled else { break }
-                        switch command {
-                        case .resize(let size):
-                            guard size != lastSize else { continue }
+                        let force: Bool
+                        if case .resize(let forced) = command { force = forced } else { force = false }
+                        let size = await MainActor.run {
+                            self.currentTerminalSize() ?? self.latestTerminalSize ?? initialSize
+                        }
+                        // Also check before input: a command such as fastfetch must see
+                        // the current grid even if its keystrokes overtook a layout callback.
+                        if force || size != lastSize {
                             do {
                                 try await outbound.changeSize(cols: size.cols, rows: size.rows,
                                                               pixelWidth: 0, pixelHeight: 0)
@@ -195,6 +229,10 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                                 // Resize failure does not end an otherwise usable session.
                                 print("[mSSH] Resize failed: \(error)")
                             }
+                        }
+                        switch command {
+                        case .resize:
+                            break
                         case .input(let bytes):
                             do {
                                 try await outbound.write(ByteBuffer(bytes: bytes))

@@ -108,7 +108,7 @@ final class SessionViewModel: Identifiable {
             // Reset attempt counter on success
             connectionAttempts = 0
 
-            // Start terminal session with default size (will resize on layout)
+            // The bridge prefers the laid-out grid; 80×24 is only a pre-layout fallback.
             bridge.connect(client: client, cols: 80, rows: 24)
         } catch is CancellationError {
             guard connectionID == attempt else { return }

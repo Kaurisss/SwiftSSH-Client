@@ -1,10 +1,103 @@
 import QuartzCore
+import SwiftTerm
 import UIKit
 import XCTest
 @testable import SwiftSSH
 
 @MainActor
 final class TerminalResizeTests: XCTestCase {
+    func testContainerInsetsActualTerminalBoundsAndReportsGridAfterLayout() throws {
+        let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
+        terminal.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        let container = TerminalContainerView(terminal: terminal)
+        var reportedGrid: (cols: Int, rows: Int)?
+        container.onLayout = { view in
+            reportedGrid = (view.getTerminal().cols, view.getTerminal().rows)
+        }
+        for size in [CGSize(width: 390, height: 600), CGSize(width: 844, height: 260),
+                     CGSize(width: 390, height: 300)] {
+            container.frame = CGRect(origin: .zero, size: size)
+            container.setNeedsLayout()
+            container.layoutIfNeeded()
+            XCTAssertEqual(terminal.frame.minX, 10)
+            XCTAssertEqual(terminal.bounds.width, size.width - 20)
+            XCTAssertEqual(terminal.bounds.height, size.height)
+            XCTAssertEqual(container.backgroundColor, terminal.nativeBackgroundColor)
+            let grid = try XCTUnwrap(reportedGrid)
+            XCTAssertEqual(grid.cols, terminal.getTerminal().cols)
+            XCTAssertEqual(grid.rows, terminal.getTerminal().rows)
+            XCTAssertGreaterThan(grid.cols, 0)
+            XCTAssertGreaterThan(grid.rows, 0)
+            let fitted = terminal.getOptimalFrameSize().size
+            XCTAssertLessThanOrEqual(fitted.width, terminal.bounds.width)
+            XCTAssertLessThanOrEqual(fitted.height, terminal.bounds.height)
+            XCTAssertLessThan(terminal.bounds.width - fitted.width, fitted.width / CGFloat(grid.cols))
+            XCTAssertLessThan(terminal.bounds.height - fitted.height, fitted.height / CGFloat(grid.rows))
+        }
+    }
+
+    func testPinchRecomputesGridWithinLimitsAndSurvivesUnrelatedUpdates() {
+        let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
+        terminal.frame = CGRect(x: 0, y: 0, width: 370, height: 500)
+        let coordinator = TerminalViewWrapper.Coordinator(bridge: SSHTerminalBridge())
+        let preference = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        coordinator.applyFontPreference(preference, to: terminal)
+        terminal.layoutIfNeeded()
+        let originalCols = terminal.getTerminal().cols
+        let originalRows = terminal.getTerminal().rows
+        let pinch = SimulatedPinchGestureRecognizer()
+        terminal.addGestureRecognizer(pinch)
+        XCTAssertTrue(coordinator.gestureRecognizer(pinch,
+            shouldRecognizeSimultaneouslyWith: terminal.panGestureRecognizer))
+        pinch.simulatedState = .began
+        coordinator.handlePinch(pinch)
+        pinch.scale = 0.1
+        pinch.simulatedState = .changed
+        coordinator.handlePinch(pinch)
+        XCTAssertEqual(terminal.font.pointSize, 8)
+        XCTAssertGreaterThan(terminal.getTerminal().cols, originalCols)
+        XCTAssertGreaterThan(terminal.getTerminal().rows, originalRows)
+        coordinator.applyFontPreference(preference, to: terminal)
+        XCTAssertEqual(terminal.font.pointSize, 8, "A SwiftUI refresh must preserve session zoom")
+
+        pinch.scale = 10
+        coordinator.handlePinch(pinch)
+        XCTAssertEqual(terminal.font.pointSize, 24)
+        XCTAssertLessThan(terminal.getTerminal().cols, originalCols)
+        XCTAssertLessThan(terminal.getTerminal().rows, originalRows)
+        XCTAssertTrue(terminal.font.fontDescriptor.symbolicTraits.contains(.traitMonoSpace))
+
+        coordinator.applyFontPreference(preference.withSize(16), to: terminal)
+        XCTAssertEqual(terminal.font.pointSize, 16, "An explicit font setting should still take effect")
+    }
+
+    func testLightPaletteWhitesHaveReadableContrastAndDarkPaletteIsRestored() {
+        let palette = TerminalTheme.lightANSIColors
+        XCTAssertEqual(palette.count, 16)
+        for color in palette {
+            func linear(_ channel: UInt16) -> Double {
+                let value = Double(channel) / 65535
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            let luminance = 0.2126 * linear(color.red) + 0.7152 * linear(color.green)
+                + 0.0722 * linear(color.blue)
+            XCTAssertGreaterThanOrEqual(1.05 / (luminance + 0.05), 4.5)
+        }
+        let terminal = TerminalViewWrapper.makeTerminalView(backgroundColor: .white)
+        let coordinator = TerminalViewWrapper.Coordinator(bridge: SSHTerminalBridge())
+        // OSC palette queries exercise installColors rather than only checking constants.
+        let recorder = PaletteQueryDelegate()
+        terminal.terminalDelegate = recorder
+        coordinator.applyPalette(to: terminal, light: true)
+        terminal.feed(text: "\u{1B}]4;7;?\u{1B}\\\u{1B}]4;15;?\u{1B}\\")
+        XCTAssertTrue(recorder.response.contains("rgb:4b4b/5555/6363"))
+        XCTAssertTrue(recorder.response.contains("rgb:3737/4141/5151"))
+        recorder.response = ""
+        coordinator.applyPalette(to: terminal, light: false)
+        terminal.feed(text: "\u{1B}]4;15;?\u{1B}\\")
+        XCTAssertTrue(recorder.response.contains("rgb:e9e9/ebeb/ebeb"))
+    }
+
     func testResizingRedrawsGlyphsWithoutStretchingTheCachedScreen() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
@@ -118,4 +211,24 @@ final class TerminalResizeTests: XCTestCase {
         XCTAssertFalse(bounds.isNull, "The fixture must contain rendered terminal text.")
         return bounds
     }
+}
+
+private final class SimulatedPinchGestureRecognizer: UIPinchGestureRecognizer {
+    var simulatedState: UIGestureRecognizer.State = .possible
+    override var state: UIGestureRecognizer.State {
+        get { simulatedState }
+        set { simulatedState = newValue }
+    }
+}
+
+private final class PaletteQueryDelegate: NSObject, TerminalViewDelegate {
+    var response = ""
+    func send(source: TerminalView, data: ArraySlice<UInt8>) { response += String(decoding: data, as: UTF8.self) }
+    func scrolled(source: TerminalView, position: Double) {}
+    func setTerminalTitle(source: TerminalView, title: String) {}
+    func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {}
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
+    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {}
+    func clipboardCopy(source: TerminalView, content: Data) {}
+    func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
 }

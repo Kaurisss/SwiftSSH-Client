@@ -5,6 +5,43 @@ import XCTest
 
 @MainActor
 final class TerminalAccessoryBarTests: XCTestCase {
+    func testFrequentKeysComeFirstAndArrowsSendANSISequences() throws {
+        let terminal = TerminalView()
+        let delegate = RecordingTerminalDelegate()
+        terminal.terminalDelegate = delegate
+        let bar = TerminalAccessoryBar(terminal: terminal)
+        let keys = buttons(in: bar).filter { $0.currentTitle != nil }.sorted { $0.tag < $1.tag }
+        XCTAssertEqual(Array(keys.prefix(8).compactMap(\.currentTitle)),
+                       ["Esc", "Tab", "Ctrl", "↑", "↓", "←", "→", "Ctrl C"])
+        for key in keys[3...6] { key.sendActions(for: .touchUpInside) }
+        XCTAssertEqual(delegate.sent, [[0x1B, 0x5B, 0x41], [0x1B, 0x5B, 0x42],
+                                       [0x1B, 0x5B, 0x44], [0x1B, 0x5B, 0x43]])
+    }
+
+    func testLastKeyIsFullyVisibleBeforeFixedButtonsAtEndOfScroll() throws {
+        let terminal = TerminalView()
+        let bar = TerminalAccessoryBar(terminal: terminal)
+        let scroll = try XCTUnwrap(bar.subviews.compactMap { $0 as? UIScrollView }.first)
+        let last = try XCTUnwrap(buttons(in: scroll).max { $0.tag < $1.tag })
+        let snippets = try XCTUnwrap(buttons(in: bar).first {
+            $0.accessibilityLabel == String(localized: "Snippets")
+        })
+        // Cover narrow phones, landscape and iPad widths.
+        for width in [CGFloat(320), 390, 844, 1024] {
+            bar.frame = CGRect(x: 0, y: 0, width: width, height: 46)
+            bar.setNeedsLayout()
+            bar.layoutIfNeeded()
+            XCTAssertGreaterThan(scroll.contentSize.width, 0)
+            scroll.contentOffset.x = max(0, scroll.contentSize.width - scroll.bounds.width)
+            let frame = last.convert(last.bounds, to: bar)
+            XCTAssertGreaterThanOrEqual(frame.minX, scroll.frame.minX)
+            XCTAssertLessThanOrEqual(frame.maxX, scroll.frame.maxX - 5)
+            XCTAssertLessThan(scroll.frame.maxX, snippets.frame.minX)
+            XCTAssertTrue(scroll.clipsToBounds)
+            XCTAssertFalse(bar.hasAmbiguousLayout)
+        }
+    }
+
     func testInterruptAndEndOfInputButtonsSendControlBytes() throws {
         let terminal = TerminalView()
         let delegate = RecordingTerminalDelegate()

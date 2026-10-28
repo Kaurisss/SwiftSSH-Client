@@ -17,9 +17,21 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
     var onStateChange: ((_ connected: Bool, _ status: String) -> Void)?
 
     private var connectionTask: Task<Void, Never>?
-    private var writer: TTYStdinWriter?
     private var isDisconnecting = false
     private var connectionID = UUID()
+
+    private struct TerminalSize: Equatable {
+        let cols: Int
+        let rows: Int
+    }
+
+    private enum PTYCommand {
+        case input([UInt8])
+        case resize(TerminalSize)
+    }
+
+    // Retain layout changes even while the SSH channel is still opening.
+    private var latestTerminalSize: TerminalSize?
 
     /// Serialized write queue — all SSH writes are funnelled through this stream
     /// so that only one `outbound.write` is in-flight at a time.
@@ -30,7 +42,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
     /// NIO's channel pipeline is not designed for concurrent callers and would
     /// deadlock/stall the SSH channel, causing the app to hang indefinitely.
     /// Routing every write through an AsyncStream ensures strict serialisation.
-    private var writeStreamContinuation: AsyncStream<[UInt8]>.Continuation?
+    private var writeStreamContinuation: AsyncStream<PTYCommand>.Continuation?
 
     private func updateState(connected: Bool, status: String) {
         isConnected = connected
@@ -47,6 +59,10 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         let attempt = UUID()
         connectionID = attempt
         isDisconnecting = false
+        if let view = terminalView, view.bounds.width > 0, view.bounds.height > 0 {
+            let grid = view.getTerminal()
+            latestTerminalSize = TerminalSize(cols: grid.cols, rows: grid.rows)
+        }
         updateState(connected: false, status: String(localized: "Opening terminal..."))
 
         connectionTask = Task { [weak self] in
@@ -72,7 +88,6 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 }
             }
             guard self.connectionID == attempt else { return }
-            self.writer = nil
             if !self.isDisconnecting && !didSetTerminalError
                 && (self.isConnected || self.statusMessage == String(localized: "Opening terminal...")) {
                 self.updateState(connected: false, status: String(localized: "Disconnected"))
@@ -85,7 +100,6 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         isDisconnecting = true
         connectionTask?.cancel()
         connectionTask = nil
-        writer = nil
         // Signal the write loop to stop
         writeStreamContinuation?.finish()
         writeStreamContinuation = nil
@@ -102,29 +116,30 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         let bytes = Array(data)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.writeStreamContinuation?.yield(bytes)
+            self.writeStreamContinuation?.yield(.input(bytes))
         }
     }
 
     nonisolated func resizeTerminal(cols: Int, rows: Int) {
         guard cols > 0, rows > 0 else { return }
         Task { @MainActor [weak self] in
-            guard let self, let writer = self.writer else { return }
-            do {
-                try await writer.changeSize(cols: cols, rows: rows, pixelWidth: 0, pixelHeight: 0)
-            } catch {
-                // Resize failure is non-fatal, just log
-                print("[mSSH] Resize failed: \(error)")
-            }
+            guard let self else { return }
+            let size = TerminalSize(cols: cols, rows: rows)
+            guard self.latestTerminalSize != size else { return }
+            self.latestTerminalSize = size
+            // Resize shares the input queue: fast pinch/layout updates cannot race
+            // each other or overlap NIO writes, leaving the remote at an old size.
+            self.writeStreamContinuation?.yield(.resize(size))
         }
     }
 
     private func runPTYSession(client: SSHClient, cols: Int, rows: Int, connectionID: UUID) async throws {
+        let initialSize = latestTerminalSize ?? TerminalSize(cols: max(1, cols), rows: max(1, rows))
         let ptyRequest = SSHChannelRequestEvent.PseudoTerminalRequest(
             wantReply: true,
             term: "xterm-256color",
-            terminalCharacterWidth: cols,
-            terminalRowHeight: rows,
+            terminalCharacterWidth: initialSize.cols,
+            terminalRowHeight: initialSize.rows,
             terminalPixelWidth: 0,
             terminalPixelHeight: 0,
             terminalModes: SSHTerminalModes([:])
@@ -134,7 +149,7 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
         // The producer side (continuation) is stored on self so that sendToSSH()
         // can yield bytes from the main actor.  The consumer side (writeStream)
         // is drained by the dedicated writerTask below — one write at a time.
-        let (writeStream, writeContinuation) = AsyncStream<[UInt8]>.makeStream()
+        let (writeStream, writeContinuation) = AsyncStream<PTYCommand>.makeStream()
         self.writeStreamContinuation = writeContinuation
 
         defer {
@@ -154,7 +169,9 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
 
                 let isCurrent = await MainActor.run {
                     guard self.connectionID == connectionID else { return false }
-                    self.writer = outbound
+                    // Replay after PTY creation: layout may have completed before
+                    // this channel existed, or changed during the SSH handshake.
+                    writeContinuation.yield(.resize(self.latestTerminalSize ?? initialSize))
                     self.updateState(connected: true, status: String(localized: "Connected"))
                     return true
                 }
@@ -164,18 +181,30 @@ final class SSHTerminalBridge: NSObject, ObservableObject {
                 // that each `outbound.write` completes before the next one starts.
                 // This is the key fix for the Thai-character hang: no concurrent writes.
                 let writerTask = Task {
-                    for await bytes in writeStream {
+                    var lastSize: TerminalSize?
+                    commandLoop: for await command in writeStream {
                         guard !Task.isCancelled else { break }
-                        do {
-                            let buffer = ByteBuffer(bytes: bytes)
-                            try await outbound.write(buffer)
-                        } catch {
-                            // Write failure means the channel is dead; report and bail.
-                            await MainActor.run { [weak self] in
-                                guard let self, self.connectionID == connectionID, !self.isDisconnecting else { return }
-                                self.updateState(connected: false, status: String(localized: "Connection lost"))
+                        switch command {
+                        case .resize(let size):
+                            guard size != lastSize else { continue }
+                            do {
+                                try await outbound.changeSize(cols: size.cols, rows: size.rows,
+                                                              pixelWidth: 0, pixelHeight: 0)
+                                lastSize = size
+                            } catch {
+                                // Resize failure does not end an otherwise usable session.
+                                print("[mSSH] Resize failed: \(error)")
                             }
-                            break
+                        case .input(let bytes):
+                            do {
+                                try await outbound.write(ByteBuffer(bytes: bytes))
+                            } catch {
+                                await MainActor.run { [weak self] in
+                                    guard let self, self.connectionID == connectionID, !self.isDisconnecting else { return }
+                                    self.updateState(connected: false, status: String(localized: "Connection lost"))
+                                }
+                                break commandLoop
+                            }
                         }
                     }
                 }

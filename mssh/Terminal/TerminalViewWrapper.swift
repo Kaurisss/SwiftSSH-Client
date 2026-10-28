@@ -18,6 +18,36 @@ private func decscusrEscape(style: AppPreferences.CursorStyle, blink: Bool) -> [
 }
 
 #if os(iOS)
+/// Padding belongs outside SwiftTerm so its grid is computed from the drawable width.
+final class TerminalContainerView: UIView {
+    let terminal: TerminalView
+    var onLayout: ((TerminalView) -> Void)?
+
+    init(terminal: TerminalView) {
+        self.terminal = terminal
+        super.init(frame: .zero)
+        backgroundColor = terminal.nativeBackgroundColor
+        terminal.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(terminal)
+        NSLayoutConstraint.activate([
+            terminal.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            terminal.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            terminal.topAnchor.constraint(equalTo: topAnchor),
+            terminal.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard terminal.bounds.width > 0, terminal.bounds.height > 0 else { return }
+        terminal.layoutIfNeeded()
+        // SwiftTerm may not emit sizeChanged if the initial grid already fits.
+        onLayout?(terminal)
+    }
+}
+
 /// UIViewRepresentable wrapper for SwiftTerm's TerminalView (iOS)
 struct TerminalViewWrapper: UIViewRepresentable {
     @Environment(\.colorScheme) private var colorScheme
@@ -50,14 +80,24 @@ struct TerminalViewWrapper: UIViewRepresentable {
         ))
     }
 
-    func makeUIView(context: Context) -> TerminalView {
+    func makeUIView(context: Context) -> TerminalContainerView {
         context.coordinator.wantsFocus = isFocused
         let terminal = Self.makeTerminalView(backgroundColor: resolvedColor(theme.background))
         terminal.terminalDelegate = context.coordinator
-        terminal.nativeForegroundColor = resolvedColor(theme.foreground)
-        terminal.font = resolvedFont
+        context.coordinator.applyFontPreference(resolvedFont, to: terminal)
+        applyTheme(to: terminal, coordinator: context.coordinator)
         terminal.inputAccessoryView = TerminalAccessoryBar(terminal: terminal)
         bridge.terminalView = terminal
+
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator,
+                                             action: #selector(Coordinator.handlePinch(_:)))
+        pinch.delegate = context.coordinator
+        terminal.addGestureRecognizer(pinch)
+
+        let container = TerminalContainerView(terminal: terminal)
+        container.onLayout = { [weak coordinator = context.coordinator] terminal in
+            coordinator?.synchronizeSize(of: terminal)
+        }
 
         applyCursorStyle(to: terminal)
 
@@ -65,7 +105,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
             Self.focusWithRetry(terminal, coordinator: context.coordinator)
         }
 
-        return terminal
+        return container
     }
 
     static func makeTerminalView(backgroundColor: UIColor) -> TerminalView {
@@ -78,23 +118,26 @@ struct TerminalViewWrapper: UIViewRepresentable {
         return terminal
     }
 
-    func updateUIView(_ uiView: TerminalView, context: Context) {
+    func updateUIView(_ container: TerminalContainerView, context: Context) {
+        let uiView = container.terminal
         context.coordinator.wantsFocus = isFocused
-        uiView.nativeBackgroundColor = resolvedColor(theme.background)
-        uiView.backgroundColor = uiView.nativeBackgroundColor
-        uiView.nativeForegroundColor = resolvedColor(theme.foreground)
-
-        let target = resolvedFont
-        if uiView.font.fontName != target.fontName
-            || abs(uiView.font.pointSize - target.pointSize) > 0.5 {
-            uiView.font = target
-        }
+        applyTheme(to: uiView, coordinator: context.coordinator)
+        container.backgroundColor = uiView.nativeBackgroundColor
+        context.coordinator.applyFontPreference(resolvedFont, to: uiView)
 
         applyCursorStyle(to: uiView)
 
         if bridge.isConnected && isFocused && !uiView.isFirstResponder {
             Self.focusWithRetry(uiView, coordinator: context.coordinator)
         }
+    }
+
+    private func applyTheme(to terminal: TerminalView, coordinator: Coordinator) {
+        terminal.nativeBackgroundColor = resolvedColor(theme.background)
+        terminal.backgroundColor = terminal.nativeBackgroundColor
+        terminal.nativeForegroundColor = resolvedColor(theme.foreground)
+        // The other bundled terminal themes have dark backgrounds even in light app chrome.
+        coordinator.applyPalette(to: terminal, light: theme == .default && colorScheme == .light)
     }
 
     /// Apply the user's cursor preference. `feed(byteArray:)` is public on
@@ -124,12 +167,62 @@ struct TerminalViewWrapper: UIViewRepresentable {
         Coordinator(bridge: bridge)
     }
 
-    final class Coordinator: NSObject, TerminalViewDelegate {
+    final class Coordinator: NSObject, TerminalViewDelegate, UIGestureRecognizerDelegate {
         let bridge: SSHTerminalBridge
         var wantsFocus = true
+        private var preferredFont: UIFont?
+        private var pinchStartSize: CGFloat = 14
+        private var usesLightPalette: Bool?
 
         init(bridge: SSHTerminalBridge) {
             self.bridge = bridge
+        }
+
+        func applyFontPreference(_ font: UIFont, to terminal: TerminalView) {
+            // Preserve session zoom across unrelated SwiftUI updates; explicit settings still win.
+            guard preferredFont?.fontName != font.fontName
+                || preferredFont?.pointSize != font.pointSize else { return }
+            preferredFont = font
+            terminal.font = font
+        }
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard let terminal = gesture.view as? TerminalView else { return }
+            switch gesture.state {
+            case .began:
+                pinchStartSize = terminal.font.pointSize
+            case .changed, .ended:
+                let size = min(24, max(8, pinchStartSize * gesture.scale))
+                guard abs(terminal.font.pointSize - size) > 0.01 else { return }
+                terminal.font = terminal.font.withSize(size)
+                synchronizeSize(of: terminal)
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            // SwiftTerm is a UIScrollView; its pan recognizer must not swallow the pinch.
+            guard gestureRecognizer is UIPinchGestureRecognizer,
+                  let terminal = gestureRecognizer.view as? TerminalView else { return false }
+            return other === terminal.panGestureRecognizer
+        }
+
+        func applyPalette(to terminal: TerminalView, light: Bool) {
+            guard usesLightPalette != light else { return }
+            if light {
+                terminal.installColors(TerminalTheme.lightANSIColors)
+            } else if usesLightPalette == true {
+                terminal.installColors(TerminalTheme.darkANSIColors)
+            }
+            usesLightPalette = light
+        }
+
+        func synchronizeSize(of terminal: TerminalView) {
+            guard terminal.bounds.width > 0, terminal.bounds.height > 0 else { return }
+            let grid = terminal.getTerminal()
+            bridge.resizeTerminal(cols: grid.cols, rows: grid.rows)
         }
 
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
@@ -140,6 +233,7 @@ struct TerminalViewWrapper: UIViewRepresentable {
         func setTerminalTitle(source: TerminalView, title: String) {}
 
         func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+            guard source.bounds.width > 0, source.bounds.height > 0 else { return }
             bridge.resizeTerminal(cols: newCols, rows: newRows)
         }
 

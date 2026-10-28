@@ -26,6 +26,10 @@ final class TerminalAccessoryBar: UIView {
         KeyDef("Esc", [0x1B]),
         KeyDef("Tab", [0x09]),
         KeyDef("Ctrl", [], isModifier: true),
+        KeyDef("\u{2191}", [0x1B, 0x5B, 0x41]),  // Up
+        KeyDef("\u{2193}", [0x1B, 0x5B, 0x42]),  // Down
+        KeyDef("\u{2190}", [0x1B, 0x5B, 0x44]),  // Left
+        KeyDef("\u{2192}", [0x1B, 0x5B, 0x43]),  // Right
         KeyDef("Ctrl C", [0x03]),
         KeyDef("Ctrl D", [0x04]),
         KeyDef("|", [0x7C]),
@@ -36,10 +40,6 @@ final class TerminalAccessoryBar: UIView {
         KeyDef(".", [0x2E]),
         KeyDef(":", [0x3A]),
         KeyDef("$", [0x24]),
-        KeyDef("\u{2190}", [0x1B, 0x5B, 0x44]),  // Left
-        KeyDef("\u{2191}", [0x1B, 0x5B, 0x41]),  // Up
-        KeyDef("\u{2193}", [0x1B, 0x5B, 0x42]),  // Down
-        KeyDef("\u{2192}", [0x1B, 0x5B, 0x43]),  // Right
     ]
 
     // Lives on the terminal so SwiftTerm applies it to system-keyboard input too.
@@ -89,6 +89,8 @@ final class TerminalAccessoryBar: UIView {
     private func setupKeys() {
         let scrollView = UIScrollView()
         scrollView.showsHorizontalScrollIndicator = false
+        scrollView.clipsToBounds = true
+        scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
 
@@ -112,11 +114,21 @@ final class TerminalAccessoryBar: UIView {
         snippetButton.accessibilityLabel = String(localized: "Snippets")
         addSubview(snippetButton)
 
+        let separator = UIView()
+        separator.backgroundColor = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(separator)
+
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: topAnchor, constant: 1),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: snippetButton.leadingAnchor, constant: -4),
+            scrollView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: separator.leadingAnchor, constant: -6),
+
+            separator.leadingAnchor.constraint(equalTo: snippetButton.leadingAnchor, constant: -7),
+            separator.widthAnchor.constraint(equalToConstant: 0.5),
+            separator.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            separator.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -10),
 
             snippetButton.topAnchor.constraint(equalTo: topAnchor, constant: 5),
             snippetButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
@@ -125,7 +137,7 @@ final class TerminalAccessoryBar: UIView {
 
             dismissButton.topAnchor.constraint(equalTo: topAnchor, constant: 5),
             dismissButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
-            dismissButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            dismissButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -6),
             dismissButton.widthAnchor.constraint(equalToConstant: 40),
         ])
 
@@ -134,16 +146,16 @@ final class TerminalAccessoryBar: UIView {
         stack.spacing = 5
         stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.layoutMargins = UIEdgeInsets(top: 5, left: 6, bottom: 5, right: 6)
+        stack.layoutMargins = UIEdgeInsets(top: 5, left: 6, bottom: 5, right: 12)
         stack.isLayoutMarginsRelativeArrangement = true
         scrollView.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: scrollView.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
-            stack.heightAnchor.constraint(equalTo: scrollView.heightAnchor),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            stack.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
         ])
 
         for (index, keyDef) in keyDefs.enumerated() {

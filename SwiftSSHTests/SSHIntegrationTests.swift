@@ -378,6 +378,67 @@ final class SSHIntegrationTests: XCTestCase {
         }
     }
 
+    func testPTYKeepsLatestSizeBeforeOpeningDuringResizeAndAcrossReconnect() async throws {
+        let fixture = try loadFixture()
+        let container = try makeContainer()
+        let service = SSHService()
+        let client = try await service.connect(host: "127.0.0.1", port: fixture.port, username: fixture.username,
+            authMethod: .privateKey(Data(fixture.privateKey.utf8)), modelContainer: container,
+            hostKeyPrompt: { _ in .accept })
+        defer { KeychainService.deleteItem(account: "hostkey-127.0.0.1:\(fixture.port)") }
+        let bridge = SSHTerminalBridge()
+        let remote = fixture.directory + "/pty-size-" + UUID().uuidString
+        let quoted = "'" + remote.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let sftp = SFTPService(client: client)
+
+        func assertRemoteSize(cols: Int, rows: Int) async throws {
+            // Let the nonisolated UI callback reach MainActor before queuing input.
+            try await Task.sleep(for: .milliseconds(50))
+            bridge.sendToSSH(data: ArraySlice("stty size > \(quoted)\n".utf8))
+            var actual = ""
+            for _ in 0..<50 {
+                if let data = try? await client.executeCommand("cat \(quoted)") {
+                    actual = String(decoding: data.readableBytesView, as: UTF8.self)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if actual.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+                        == [String(rows), String(cols)] { break }
+                }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertEqual(actual.split(whereSeparator: { $0.isWhitespace }).map(String.init),
+                           [String(rows), String(cols)])
+            try await sftp.deleteFile(path: remote)
+        }
+
+        do {
+            // Layout arrives before a channel exists; this must not be dropped.
+            bridge.resizeTerminal(cols: 101, rows: 37)
+            try await Task.sleep(for: .milliseconds(50))
+            for attempt in 0..<2 {
+                let connected = expectation(description: "PTY opened with the latest grid")
+                bridge.onStateChange = { isConnected, _ in if isConnected { connected.fulfill() } }
+                bridge.connect(client: client, cols: 80, rows: 24)
+                if attempt == 0 {
+                    // Another layout arrives while withPTY is still opening.
+                    bridge.resizeTerminal(cols: 93, rows: 29)
+                }
+                await fulfillment(of: [connected], timeout: 10)
+                try await assertRemoteSize(cols: attempt == 0 ? 93 : 120,
+                                           rows: attempt == 0 ? 29 : 42)
+                for cols in 100...120 { bridge.resizeTerminal(cols: cols, rows: 42) }
+                bridge.resizeTerminal(cols: 0, rows: 0) // Ignore zero-sized transition layouts.
+                try await assertRemoteSize(cols: 120, rows: 42)
+                bridge.disconnect()
+            }
+            await service.disconnect()
+        } catch {
+            bridge.disconnect()
+            try? await sftp.deleteFile(path: remote)
+            await service.disconnect()
+            throw error
+        }
+    }
+
     func testHostKeyDecisionCanOutlastNetworkTimeout() async throws {
         let fixture = try loadFixture()
         let container = try makeContainer()
